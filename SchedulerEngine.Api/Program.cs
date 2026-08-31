@@ -13,6 +13,7 @@ using SchedulerEngine.Api.Extensions;
 using SchedulerEngine.Api.Security;
 using SchedulerEngine.Core.Seeding;
 using Scalar.AspNetCore;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -134,6 +135,25 @@ builder.Services.AddAuthentication()
         ApiKeyAuthConstants.SchemeName, options => { });
 
 var app = builder.Build();
+
+var forwardedHeadersOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+};
+forwardedHeadersOptions.KnownIPNetworks.Clear();
+forwardedHeadersOptions.KnownProxies.Clear();
+
+app.UseForwardedHeaders(forwardedHeadersOptions);
+
+// 9. Middleware Pipeline (Sıralama Önemlidir)
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
+}
+else
+{
+    app.UseHsts();
+}
 
 app.MapOpenApi();
 app.MapScalarApiReference(options =>
