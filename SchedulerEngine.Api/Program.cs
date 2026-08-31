@@ -5,7 +5,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Security.Claims;
 using Hangfire;
-using Hangfire.Dashboard;
 using Hangfire.PostgreSql;
 using SchedulerEngine.Infrastructure;
 using SchedulerEngine.Service.Behaviors;
@@ -13,6 +12,7 @@ using SchedulerEngine.Settings.Core;
 using SchedulerEngine.Api.Extensions;
 using SchedulerEngine.Api.Security;
 using SchedulerEngine.Core.Seeding;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -135,11 +135,13 @@ builder.Services.AddAuthentication()
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+app.MapOpenApi();
+app.MapScalarApiReference(options =>
 {
-    app.MapOpenApi();
-}
+    options.WithTitle("SchedulerEngine API Reference")
+           .WithTheme(ScalarTheme.Moon)
+           .WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient);
+});
 
 app.UseHttpsRedirection();
 app.UseCors("AllowFrontend");
