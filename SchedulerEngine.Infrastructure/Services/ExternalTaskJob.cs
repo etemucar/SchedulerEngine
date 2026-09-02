@@ -56,9 +56,8 @@ public class ExternalTaskJob : IExternalTaskJob
             c => c.Id == callerCredentialId,
             include: q => q
                 .Include(c => c.ContactMedia)
-                .Include(c => c.DigitalIdentity)
-                    .ThenInclude(d => d.Credentials)
-                        .ThenInclude(oc => oc.Characteristics),
+                .Include(c => c.DigitalIdentity),
+            asNoTracking: true,
             ct: ct);
 
         if (callerCredential is null)
@@ -77,8 +76,12 @@ public class ExternalTaskJob : IExternalTaskJob
                 $"Bu servis için callback URL (ContactMedium.Url) tanımlı değil. CredentialId: {callerCredentialId}");
         }
 
-        var outboundCredential = callerCredential.DigitalIdentity.Credentials
-            .FirstOrDefault(c => c.CredentialType == CredentialType.OutboundApiKey);
+        var outboundCredential = await _credentialRepository.FindOneAsync(
+            c => c.DigitalIdentityId == callerCredential.DigitalIdentityId
+                 && c.CredentialType == CredentialType.OutboundApiKey,
+            include: q => q.Include(c => c.Characteristics),
+            asNoTracking: true,
+            ct: ct);
 
         var outboundEncrypted = outboundCredential?.Characteristics
             .FirstOrDefault(ch => ch.Name == "outboundApiKeyEncrypted")?.Value;
