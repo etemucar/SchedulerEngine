@@ -4,6 +4,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
+#pragma warning disable CA1814 // Prefer jagged arrays over multidimensional
+
 namespace SchedulerEngine.Infrastructure.Migrations
 {
     /// <inheritdoc />
@@ -614,6 +616,40 @@ namespace SchedulerEngine.Infrastructure.Migrations
                         principalTable: "credential",
                         principalColumn: "credential_id",
                         onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.InsertData(
+                schema: "scheduler_engine",
+                table: "language",
+                columns: new[] { "language_id", "create_date", "created_by", "is_deleted", "language_cd", "name", "status", "update_date", "updated_by" },
+                values: new object[,]
+                {
+                    { 1, null, null, 0, "tr", "Türkçe", 0, null, null },
+                    { 2, null, null, 0, "en", "English", 0, null, null },
+                    { 3, null, null, 0, "ru", "Русский", 0, null, null }
+                });
+
+            migrationBuilder.InsertData(
+                schema: "scheduler_engine",
+                table: "localizable_fields",
+                columns: new[] { "localizable_fields_id", "create_date", "created_by", "entity_field", "entity_type", "is_deleted", "status", "update_date", "updated_by" },
+                values: new object[,]
+                {
+                    { 1, null, null, "Name", "Status", 0, 0, null, null },
+                    { 2, null, null, "Description", "Status", 0, 0, null, null }
+                });
+
+            migrationBuilder.InsertData(
+                schema: "scheduler_engine",
+                table: "party_role_type",
+                columns: new[] { "party_role_type_id", "create_date", "created_by", "is_deleted", "name", "organization_id", "party_role_type_cd", "status", "update_date", "updated_by" },
+                values: new object[,]
+                {
+                    { 1, null, null, 0, "Site Yöneticis", null, "SITE_ADMIN", 0, null, null },
+                    { 2, null, null, 0, "Uygulama Kullanıcısı", null, "USER", 0, null, null },
+                    { 3, null, null, 0, "Müşteri", null, "CUSTOMER", 0, null, null },
+                    { 4, null, null, 0, "Fatura Hesabı", null, "BILL_ACCOUNT", 0, null, null },
+                    { 5, null, null, 0, "Dış servis hesabı", null, "EXTERNAL_SERVICE", 0, null, null }
                 });
 
             migrationBuilder.CreateIndex(

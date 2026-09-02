@@ -12,7 +12,7 @@ using SchedulerEngine.Infrastructure;
 namespace SchedulerEngine.Infrastructure.Migrations
 {
     [DbContext(typeof(SchedulerEngineDbContext))]
-    [Migration("20260830092039_mig_v1")]
+    [Migration("20260901035130_mig_v1")]
     partial class mig_v1
     {
         /// <inheritdoc />
@@ -510,6 +510,32 @@ namespace SchedulerEngine.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("language", "scheduler_engine");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            IsDeleted = 0,
+                            LanguageCd = "tr",
+                            Name = "Türkçe",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = 2,
+                            IsDeleted = 0,
+                            LanguageCd = "en",
+                            Name = "English",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = 3,
+                            IsDeleted = 0,
+                            LanguageCd = "ru",
+                            Name = "Русский",
+                            Status = 0
+                        });
                 });
 
             modelBuilder.Entity("SchedulerEngine.Core.Model.LocalizableFields", b =>
@@ -558,6 +584,24 @@ namespace SchedulerEngine.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("localizable_fields", "scheduler_engine");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            EntityField = "Name",
+                            EntityType = "Status",
+                            IsDeleted = 0,
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = 2,
+                            EntityField = "Description",
+                            EntityType = "Status",
+                            IsDeleted = 0,
+                            Status = 0
+                        });
                 });
 
             modelBuilder.Entity("SchedulerEngine.Core.Model.Localization", b =>
@@ -975,6 +1019,48 @@ namespace SchedulerEngine.Infrastructure.Migrations
                     b.HasIndex("OrganizationId");
 
                     b.ToTable("party_role_type", "scheduler_engine");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            IsDeleted = 0,
+                            Name = "Site Yöneticis",
+                            PartyRoleTypeCd = "SITE_ADMIN",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = 2,
+                            IsDeleted = 0,
+                            Name = "Uygulama Kullanıcısı",
+                            PartyRoleTypeCd = "USER",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = 3,
+                            IsDeleted = 0,
+                            Name = "Müşteri",
+                            PartyRoleTypeCd = "CUSTOMER",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = 4,
+                            IsDeleted = 0,
+                            Name = "Fatura Hesabı",
+                            PartyRoleTypeCd = "BILL_ACCOUNT",
+                            Status = 0
+                        },
+                        new
+                        {
+                            Id = 5,
+                            IsDeleted = 0,
+                            Name = "Dış servis hesabı",
+                            PartyRoleTypeCd = "EXTERNAL_SERVICE",
+                            Status = 0
+                        });
                 });
 
             modelBuilder.Entity("SchedulerEngine.Core.Model.RefreshToken", b =>

@@ -4,6 +4,7 @@ using SchedulerEngine.Core.Base;
 using System.Linq.Expressions;
 using SchedulerEngine.Core.Converter;
 using SchedulerEngine.Core.TMFCommon;
+using SchedulerEngine.Data.Seeding;
 
 
 namespace SchedulerEngine.Infrastructure;
@@ -34,7 +35,7 @@ public class SchedulerEngineDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // Önce varsa özel konfigürasyonları uygula
+        DataSeed.Seed(modelBuilder);
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(SchedulerEngineDbContext).Assembly);
 
         base.OnModelCreating(modelBuilder);
