@@ -23,35 +23,31 @@ public class AddOrUpdateRecurringJobCommandHandler : IRequestHandler<AddOrUpdate
 
     public async Task<RecurringJobResult> Handle(AddOrUpdateRecurringJobCommand request, CancellationToken ct)
     {
-        // FinYo/DocDes gibi iki farklı servis aynı recurringJobId'yi seçerse
-        // (örn. "daily-sync"), Hangfire'ın DÜZ (tek) isim alanında biri
-        // diğerini sessizce ezer. Bunu önlemek için gerçek Hangfire id'sini
-        // "{ServiceName}:{recurringJobId}" olarak prefix'liyoruz - caller
-        // buna dair hiçbir şey bilmiyor, kendi verdiği id ile çalışmaya
-        // devam ediyor (response'ta da kendi id'sini görüyor).
         var serviceName = await ResolveServiceNameAsync(request.CallerCredentialId, ct);
         var hangfireJobId = $"{serviceName.Replace(':', '-')}:{request.RecurringJobId}";
 
-        // TimeZoneId boşsa UTC - cron ifadesindeki saatler bu saat dilimine
-        // göre yorumlanır (Validator, geçersiz id'leri daha önce eledi).
         var timeZone = string.IsNullOrWhiteSpace(request.TimeZoneId)
             ? TimeZoneInfo.Utc
             : TimeZoneInfo.FindSystemTimeZoneById(request.TimeZoneId);
 
+        // DÜZELTME (2026-09): IExternalTaskJob.ExecuteAsync'e PerformContext
+        // parametresi eklendi (bkz. IExternalTaskJob.cs, ExternalTaskJob.cs) —
+        // idempotencyKey'in retry'lar arasında sabit kalabilmesi için gerekli.
+        // Buraya geçilen `null`, Hangfire'ın PerformContext tipi için
+        // kendi konvansiyonu: registration anında ne yazarsanız yazın,
+        // Hangfire bu parametreyi TİP eşleşmesine göre tanıyıp her execution'da
+        // (retry dahil) gerçek PerformContext ile OTOMATİK değiştirir.
         RecurringJob.AddOrUpdate<IExternalTaskJob>(
             hangfireJobId,
-            job => job.ExecuteAsync(request.CallerCredentialId, request.TaskName, null, request.Payload, CancellationToken.None),
+            job => job.ExecuteAsync(request.CallerCredentialId, request.TaskName, null, request.Payload, null, CancellationToken.None),
             request.CronExpression,
             new RecurringJobOptions { TimeZone = timeZone });
 
-        // Audit kaydı - Hangfire'ın kendi storage'ının YANI SIRA, kendi
-        // tablomuzda da "kim, ne zaman, ne kaydetti" bilgisini tutuyoruz
-        // (listeleme/audit endpoint'i için, bkz. GetMyRecurringJobsQuery).
         await UpsertAuditRecordAsync(request, serviceName, hangfireJobId, ct);
 
         return new RecurringJobResult
         {
-            RecurringJobId = request.RecurringJobId, // caller'ın kendi verdiği, PREFIX'SİZ id
+            RecurringJobId = request.RecurringJobId,
             CronExpression = request.CronExpression
         };
     }
@@ -89,17 +85,12 @@ public class AddOrUpdateRecurringJobCommandHandler : IRequestHandler<AddOrUpdate
             existing.TaskName = request.TaskName;
             existing.IsActive = true;
             existing.UpdatedAt = DateTime.UtcNow;
-            existing.RemovedAt = null; // daha önce kaldırılmışsa (soft-delete), tekrar aktif hale geliyor
+            existing.RemovedAt = null;
 
             await _serviceRecurringJobRepository.UpdateAsync(existing, ct);
         }
     }
 
-    /// <summary>
-    /// RemoveRecurringJobCommandHandler'da da aynısı var (bilinçli tekrar -
-    /// bu katmandaki diğer Map* yardımcı metotları da aynı şekilde
-    /// duplike ediliyor, bkz. MapContactMedium).
-    /// </summary>
     private async Task<string> ResolveServiceNameAsync(Guid callerCredentialId, CancellationToken ct)
     {
         var serviceName = await _credentialRepository.FindOneSelectAsync(

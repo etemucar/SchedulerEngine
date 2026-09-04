@@ -13,7 +13,7 @@ public class EnqueueExternalTaskCommandHandler : IRequestHandler<EnqueueExternal
         var idempotencyKey = request.IdempotencyKey ?? Guid.NewGuid().ToString("N");
 
         var jobId = BackgroundJob.Enqueue<IExternalTaskJob>(
-            job => job.ExecuteAsync(request.CallerCredentialId, request.TaskName, idempotencyKey, request.Payload, CancellationToken.None));
+            job => job.ExecuteAsync(request.CallerCredentialId, request.TaskName, idempotencyKey, request.Payload, null, CancellationToken.None));
 
         return Task.FromResult(new EnqueueJobResult { JobId = jobId });
     }

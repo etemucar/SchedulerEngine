@@ -1,6 +1,6 @@
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Hangfire;
+using Hangfire.Server; // PerformContext için
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SchedulerEngine.Core.Enums;
@@ -11,13 +11,6 @@ using SchedulerEngine.Core.Security;
 
 namespace SchedulerEngine.Infrastructure.Services;
 
-/// <summary>
-/// Hangfire tarafından çağrılan somut job. Dış sisteme (FinYo, DocDes vb.)
-/// HTTP isteği atar - hedef URL ve gönderilecek anahtar appsettings'te SABİT
-/// DEĞİL, callerCredentialId üzerinden her çalıştırmada veritabanından TAZE
-/// çözülür (bkz. IExternalTaskJob.ExecuteAsync dokümantasyonu).
-/// [AutomaticRetry]: geçici hatalarda otomatik tekrar dener.
-/// </summary>
 public class ExternalTaskJob : IExternalTaskJob
 {
     private readonly IHttpClientFactory _httpClientFactory;
@@ -43,15 +36,29 @@ public class ExternalTaskJob : IExternalTaskJob
         string taskName,
         string? idempotencyKey,
         Dictionary<string, object?> payload,
+        PerformContext? context, // Hangfire runtime'da otomatik dolduruyor, job parametresi olarak SAKLANMIYOR
         CancellationToken ct)
     {
-        // idempotencyKey null geldiyse (recurring job'lar için) burada, her
-        // gerçek çalıştırmada taze bir tane üretiyoruz.
-        idempotencyKey ??= Guid.NewGuid().ToString("N");
+        // DÜZELTME (2026-09): Eskiden burada `idempotencyKey ??= Guid.NewGuid()...`
+        // vardı — bu, idempotencyKey null geldiğinde (tipik recurring job
+        // senaryosu) HER retry'da YENİ bir rastgele değer üretiyordu, çünkü
+        // Guid.NewGuid() her çağrıda farklı sonuç verir. Sonuç: FinYo/DocDes
+        // tarafındaki duplicate-kontrolü hiçbir zaman eşleşme bulamıyordu,
+        // idempotency FİİLEN çalışmıyordu.
+        //
+        // Artık: idempotencyKey null ise, Hangfire'ın bu job ÇALIŞTIRMASINA
+        // (occurrence'ına) verdiği JobId kullanılıyor. JobId, Hangfire
+        // tarafından retry'lar arasında SABİT kalır (aynı job'ın retry'ı,
+        // yeni bir job değildir) — bu yüzden 1. denemede de, ağ hatası
+        // sonucu gerçekleşen 2./3. retry'de de aynı anahtar FinYo'ya gider.
+        //
+        // NOT: context?.BackgroundJob?.Id, job parametresi DEĞİL — Hangfire
+        // tarafından metot her çağrıldığında runtime'da enjekte edilir, bu
+        // yüzden DB'de saklanan serileştirilmiş argümanların bir parçası
+        // değildir ve her retry'da "taze" ama JobId sabit olduğu için AYNI
+        // değeri üretir.
+        idempotencyKey ??= $"hangfire-job-{context?.BackgroundJob?.Id ?? Guid.NewGuid().ToString("N")}";
 
-        // Çağıranın (FinYo/DocDes'in bize kimlik doğrularken kullandığı ApiKey
-        // credential'ının) ContactMedium'undan (Url) ve aynı DigitalIdentity'nin
-        // kardeş bir OutboundApiKey credential'ından çağrı bilgilerini çözüyoruz.
         var callerCredential = await _credentialRepository.FindOneAsync(
             c => c.Id == callerCredentialId,
             include: q => q
@@ -86,17 +93,27 @@ public class ExternalTaskJob : IExternalTaskJob
         var outboundEncrypted = outboundCredential?.Characteristics
             .FirstOrDefault(ch => ch.Name == "outboundApiKeyEncrypted")?.Value;
 
-        var client = _httpClientFactory.CreateClient(); // isimli/BaseAddress'li değil - URL her seferinde tam olarak veriliyor
+        var client = _httpClientFactory.CreateClient();
 
         if (!string.IsNullOrEmpty(outboundEncrypted))
         {
+            // DÜZELTME (2026-09): Eskiden burada `Authorization: Bearer <key>`
+            // gönderiliyordu. Ama FinYo/DocDes tarafındaki SchedulerWebhookController
+            // kimlik doğrulamasını "X-Outbound-Api-Key" header'ından okuyor — iki
+            // taraf hiç eşleşmiyordu, her çağrı 401 ile dönüyordu (host tarafında
+            // ilk başta bu, eksik/boş environment variable sanılmıştı; asıl neden
+            // header adı uyuşmazlığıydı). Ayrıca FinYo tarafında kullanıcı JWT auth'u
+            // da "Authorization: Bearer" kullandığı için, aynı header'ı servisler
+            // arası API key için de kullanmak iki farklı auth şemasını çakıştırıp
+            // JwtBearer middleware'inin bu değeri JWT olarak parse etmeye çalışmasına
+            // yol açabilirdi. Bu yüzden ayrı, özel bir header'a geçildi.
             var rawOutboundKey = _encryptionService.Decrypt(outboundEncrypted);
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", rawOutboundKey);
+            client.DefaultRequestHeaders.Add("X-Outbound-Api-Key", rawOutboundKey);
         }
         else
         {
             _logger.LogWarning(
-                "Bu servis için OutboundApiKey tanımlı değil, Authorization header'sız gönderiliyor. CredentialId: {CredentialId}",
+                "Bu servis için OutboundApiKey tanımlı değil, X-Outbound-Api-Key header'sız gönderiliyor. CredentialId: {CredentialId}",
                 callerCredentialId);
         }
 
@@ -121,7 +138,7 @@ public class ExternalTaskJob : IExternalTaskJob
                 response.StatusCode, body);
         }
 
-        response.EnsureSuccessStatusCode(); // hata -> exception -> Hangfire retry tetiklenir
+        response.EnsureSuccessStatusCode();
 
         _logger.LogInformation("Görev başarıyla dış sisteme iletildi. TaskName={TaskName}", taskName);
     }
