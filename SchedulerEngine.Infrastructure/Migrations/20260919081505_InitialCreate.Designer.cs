@@ -12,8 +12,8 @@ using SchedulerEngine.Infrastructure;
 namespace SchedulerEngine.Infrastructure.Migrations
 {
     [DbContext(typeof(SchedulerEngineDbContext))]
-    [Migration("20260901035130_mig_v1")]
-    partial class mig_v1
+    [Migration("20260919081505_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -874,10 +874,6 @@ namespace SchedulerEngine.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("party_role_type_id");
 
-                    b.Property<int?>("PartyRoleTypeId1")
-                        .HasColumnType("integer")
-                        .HasColumnName("party_role_type_id1");
-
                     b.Property<int>("Status")
                         .HasColumnType("integer")
                         .HasColumnName("status");
@@ -905,8 +901,6 @@ namespace SchedulerEngine.Infrastructure.Migrations
                     b.HasIndex("PartyId");
 
                     b.HasIndex("PartyRoleTypeId");
-
-                    b.HasIndex("PartyRoleTypeId1");
 
                     b.ToTable("party_role", "scheduler_engine");
                 });
@@ -1416,14 +1410,10 @@ namespace SchedulerEngine.Infrastructure.Migrations
                         .IsRequired();
 
                     b.HasOne("SchedulerEngine.Core.Model.PartyRoleType", "PartyRoleType")
-                        .WithMany()
+                        .WithMany("PartyRoles")
                         .HasForeignKey("PartyRoleTypeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.HasOne("SchedulerEngine.Core.Model.PartyRoleType", null)
-                        .WithMany("PartyRoles")
-                        .HasForeignKey("PartyRoleTypeId1");
 
                     b.Navigation("Party");
 

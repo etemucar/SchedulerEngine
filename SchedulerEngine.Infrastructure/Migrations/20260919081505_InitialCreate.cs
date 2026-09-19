@@ -9,7 +9,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace SchedulerEngine.Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class mig_v1 : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -322,7 +322,6 @@ namespace SchedulerEngine.Infrastructure.Migrations
                     valid_for_start = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     valid_for_end = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     organization_id = table.Column<int>(type: "integer", nullable: true),
-                    party_role_type_id1 = table.Column<int>(type: "integer", nullable: true),
                     status = table.Column<int>(type: "integer", nullable: false),
                     is_deleted = table.Column<int>(type: "integer", nullable: false),
                     create_date = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
@@ -353,12 +352,6 @@ namespace SchedulerEngine.Infrastructure.Migrations
                         principalTable: "party_role_type",
                         principalColumn: "party_role_type_id",
                         onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "FK_party_role_party_role_type_party_role_type_id1",
-                        column: x => x.party_role_type_id1,
-                        principalSchema: "scheduler_engine",
-                        principalTable: "party_role_type",
-                        principalColumn: "party_role_type_id");
                 });
 
             migrationBuilder.CreateTable(
@@ -754,12 +747,6 @@ namespace SchedulerEngine.Infrastructure.Migrations
                 schema: "scheduler_engine",
                 table: "party_role",
                 column: "party_role_type_id");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_party_role_party_role_type_id1",
-                schema: "scheduler_engine",
-                table: "party_role",
-                column: "party_role_type_id1");
 
             migrationBuilder.CreateIndex(
                 name: "IX_party_role_account_customer_id",

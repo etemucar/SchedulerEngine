@@ -10,9 +10,8 @@ public class PartyRoleConfiguration : IEntityTypeConfiguration<PartyRole>
     public void Configure(EntityTypeBuilder<PartyRole> builder)
     {
         builder.HasOne(x => x.PartyRoleType)
-            .WithMany()
+            .WithMany(x => x.PartyRoles)
             .HasForeignKey(x => x.PartyRoleTypeId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }
-
