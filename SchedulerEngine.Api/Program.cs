@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using MediatR;
 using FluentValidation;
 using System.Text.Json;
@@ -28,7 +29,10 @@ builder.Services.AddDbContext<SchedulerEngineDbContext>(options =>
         npgsqlOptions
             .MigrationsAssembly("SchedulerEngine.Infrastructure")
             .MigrationsHistoryTable("__EFMigrationsHistory"))
-           .UseSnakeCaseNamingConvention());
+           .UseSnakeCaseNamingConvention()
+           // GEÇİCİ: EF 9+, model snapshot'tan farklıysa MigrateAsync'i hata ile durdurur.
+           // Farkın sebebi bulunana kadar uyarı susturuldu; sebep bulununca bu satır kaldırılmalı.
+           .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning)));
 
 // ---- 2. MediatR & Pipeline Behaviors ----
 // NOT: typeof(TransactionalBehavior<,>).Assembly - bu class'ın gerçek
