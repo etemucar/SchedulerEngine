@@ -89,7 +89,7 @@ public class UpdateDigitalIdentityStatusCommandHandler
             digitalIdentity.Id, previousStatus, request.Status);
 
         // Bu DigitalIdentity bir ApiKey credential'ına sahip olabilir (örn.
-        // FinYo/DocDes) - ApiKeyAuthenticationHandler'ın cache'i status
+        // SchedulerEngine/DocDes) - ApiKeyAuthenticationHandler'ın cache'i status
         // değişikliğinden habersiz kalmasın diye her durumda temizliyoruz
         // (hangi DigitalIdentity'nin ApiKey'i olduğunu burada bilmemize
         // gerek yok, cache zaten ucuz şekilde yeniden dolduruluyor).

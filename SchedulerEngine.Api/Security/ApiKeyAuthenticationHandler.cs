@@ -21,13 +21,13 @@ public class ApiKeyAuthenticationSchemeOptions : AuthenticationSchemeOptions
 }
 
 /// <summary>
-/// FinYo, DocDes gibi dış servislerin Job API'sine erişimini "X-Api-Key"
+/// SchedulerEngine, DocDes gibi dış servislerin Job API'sine erişimini "X-Api-Key"
 /// header'ıyla doğrular. Credential/CredentialCharacteristic'te
 /// (CredentialType.ApiKey, Characteristic Name="apiKeyHash") saklanan
 /// hash'lerle karşılaştırır - appsettings'e hiçbir şey yazılmaz, yeni bir
 /// dış servis eklemek sadece veri eklemekle olur (kod/appsettings değişmez).
 ///
-/// Az sayıda servis credential'ı olacağı varsayımıyla (şu an FinYo, DocDes),
+/// Az sayıda servis credential'ı olacağı varsayımıyla (şu an SchedulerEngine, DocDes),
 /// hepsini IMemoryCache'te tutup her istekte DB'ye gitmiyoruz.
 /// </summary>
 public class ApiKeyAuthenticationHandler : AuthenticationHandler<ApiKeyAuthenticationSchemeOptions>

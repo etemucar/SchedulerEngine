@@ -3,14 +3,14 @@ using Hangfire.Server;
 namespace SchedulerEngine.Core.Interfaces;
 
 /// <summary>
-/// Hangfire tarafından çalıştırılan, dış sisteme (FinYo, DocDes vb.) HTTP
+/// Hangfire tarafından çalıştırılan, dış sisteme (SchedulerEngine, DocDes vb.) HTTP
 /// isteği atan job'un soyutlaması. Somut implementasyon Infrastructure
 /// katmanında (bkz. ExternalTaskJob.cs).
 /// </summary>
 public interface IExternalTaskJob
 {
     /// <param name="callerCredentialId">
-    /// Job'u kaydeden dış servisin (FinYo/DocDes) ApiKey credential'ının Id'si.
+    /// Job'u kaydeden dış servisin (SchedulerEngine/DocDes) ApiKey credential'ının Id'si.
     /// </param>
     /// <param name="idempotencyKey">
     /// 2026-09 GÜNCELLEME — ESKİ DAVRANIŞ YANLIŞTI: "Null geçilirse her

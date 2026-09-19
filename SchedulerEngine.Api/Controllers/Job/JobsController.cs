@@ -12,7 +12,7 @@ namespace SchedulerEngine.Api.Controllers;
 
 /// <summary>
 /// TMF dışı endpoint - Auth/Admin ile aynı konvansiyon: api/v1/ prefix'i.
-/// Sadece X-Api-Key header'ı geçerli olan dış servisler (FinYo, DocDes vb.)
+/// Sadece X-Api-Key header'ı geçerli olan dış servisler (SchedulerEngine, DocDes vb.)
 /// erişebilir - JWT/cookie login'e hiç bakmaz (bkz. ApiKeyAuthenticationHandler).
 /// </summary>
 [Authorize(AuthenticationSchemes = ApiKeyAuthConstants.SchemeName)]

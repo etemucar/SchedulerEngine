@@ -53,7 +53,7 @@ public class ApiMappingProfile : Profile
         CreateMap<DigitalIdentityModel, CreateDigitalIdentityCommand>()
             .ForMember(dest => dest.Credentials, opt => opt.MapFrom(src => src.Credentials));
 
-        // ── B7: DigitalIdentity Patch mapping'i (FinYo'dan taşındı) ─────
+        // ── B7: DigitalIdentity Patch mapping'i (SchedulerEngine'dan taşındı) ─────
         CreateMap<CredentialModel, CredentialPatchRequest>()
             .ForMember(dest => dest.ContactMedia, opt => opt.MapFrom(src => src.ContactMedia));
 

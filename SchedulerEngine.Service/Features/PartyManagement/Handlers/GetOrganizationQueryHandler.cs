@@ -1,5 +1,7 @@
 using MediatR;
+using AutoMapper;
 using Microsoft.Extensions.Logging;
+using SchedulerEngine.Core.Exceptions;
 using SchedulerEngine.Service.Dtos.Responses;
 using SchedulerEngine.Service.Features.Queries;
 using SchedulerEngine.Core.Repository;
@@ -10,14 +12,17 @@ namespace SchedulerEngine.Service.Features.Handlers;
 public class GetOrganizationQueryHandler : IRequestHandler<GetOrganizationQuery, OrganizationResponse>
 {
     private readonly IRepository<Organization, int> _organizationRepository;
+    private readonly IMapper _mapper;
     private readonly ILogger<GetOrganizationQueryHandler> _logger;
 
     public GetOrganizationQueryHandler(
         IRepository<Organization, int> organizationRepository,
+        IMapper mapper,
         ILogger<GetOrganizationQueryHandler> logger)
     {
         _organizationRepository = organizationRepository;
-        _logger                 = logger;
+        _mapper = mapper;
+        _logger = logger;
     }
 
     public async Task<OrganizationResponse> Handle(GetOrganizationQuery request, CancellationToken cancellationToken)
@@ -25,25 +30,8 @@ public class GetOrganizationQueryHandler : IRequestHandler<GetOrganizationQuery,
         var organization = await _organizationRepository.GetByIdAsync(request.Id, cancellationToken);
 
         if (organization is null)
-            return null!;
+            throw new NotFoundException($"Organization bulunamadı: {request.Id}");
 
-        return MapToResponse(organization);
+        return _mapper.Map<OrganizationResponse>(organization);
     }
-
-    private static OrganizationResponse MapToResponse(Organization organization) => new()
-    {
-        Id                  = organization.Id,
-        Name                = organization.Name,
-        TaxOffice           = organization.TaxOffice,
-        TaxNumber           = organization.TaxNumber,
-        IdentityNumber      = organization.IdentityNumber,
-        TradeName           = organization.TradeName,
-        TradeRegisterNumber = organization.TradeRegisterNumber,
-        MersisNo            = organization.MersisNo,
-        ValidFor = new TimePeriodResponse
-        {
-            StartDateTime = organization.ValidForStart,
-            EndDateTime   = organization.ValidForEnd
-        }
-    };
 }

@@ -1,4 +1,5 @@
 using Moq;
+using AutoMapper;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using System.Linq.Expressions;
@@ -8,6 +9,7 @@ using SchedulerEngine.Core.Security;
 using SchedulerEngine.Core.Services;
 using SchedulerEngine.Core.Enums;
 using SchedulerEngine.Core.Exceptions;
+using SchedulerEngine.Service.Dtos.Responses;
 using SchedulerEngine.Service.Features.Commands;
 using SchedulerEngine.Service.Features.Handlers;
 using SchedulerEngine.Service.Dtos.Requests;
@@ -23,6 +25,7 @@ public class PatchDigitalIdentityCommandHandlerTests
     private readonly Mock<IRepository<PartyRole, int>>                 _partyRoleRepositoryMock;
     private readonly Mock<ICurrentUserService>                         _currentUserServiceMock;
     private readonly Mock<IPasswordHasher>                             _passwordHasherMock;
+    private readonly Mock<IMapper>                                     _mapperMock;
     private readonly Mock<ILogger<PatchDigitalIdentityCommandHandler>> _loggerMock;
     private readonly PatchDigitalIdentityCommandHandler                _handler;
 
@@ -40,7 +43,18 @@ public class PatchDigitalIdentityCommandHandlerTests
         _partyRoleRepositoryMock                = new Mock<IRepository<PartyRole, int>>();
         _currentUserServiceMock                 = new Mock<ICurrentUserService>();
         _passwordHasherMock                     = new Mock<IPasswordHasher>();
+        _mapperMock                              = new Mock<IMapper>();
         _loggerMock                              = new Mock<ILogger<PatchDigitalIdentityCommandHandler>>();
+
+        // Handler'ı AutoMapper profilinden izole tutmak için manuel mapping — sadece
+        // testlerin assert ettiği alanları taşıyor.
+        _mapperMock
+            .Setup(x => x.Map<DigitalIdentityResponse>(It.IsAny<DigitalIdentity>()))
+            .Returns((DigitalIdentity src) => new DigitalIdentityResponse
+            {
+                Id       = src.Id,
+                Nickname = src.Nickname
+            });
 
         _handler = new PatchDigitalIdentityCommandHandler(
             _digitalIdentityRepositoryMock.Object,
@@ -50,6 +64,7 @@ public class PatchDigitalIdentityCommandHandlerTests
             _partyRoleRepositoryMock.Object,
             _currentUserServiceMock.Object,
             _passwordHasherMock.Object,
+            _mapperMock.Object,
             _loggerMock.Object);
     }
 

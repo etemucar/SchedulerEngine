@@ -6,6 +6,7 @@ using SchedulerEngine.Core.Model;
 using SchedulerEngine.Core.Security;
 using SchedulerEngine.Service.Features.Commands;
 using SchedulerEngine.Service.Dtos.Responses;
+using SchedulerEngine.Service.Helpers;
 using SchedulerEngine.Core.Exceptions;
 using SchedulerEngine.Core.Seeding;
 
@@ -58,36 +59,28 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, A
         existingToken.IsRevoked = true;
         await _refreshTokenRepository.UpdateAsync(existingToken, cancellationToken);
 
-        // 4. Kullanıcı bilgilerini çöz
-        var appUser   = existingToken.ApplicationUser;
-        var digitalId = appUser.DigitalIdentity;
-        var partyRole   = digitalId.PartyRole;
-        var individual = partyRole.Party?.Individual;
-        var userName = individual != null
-            ? $"{individual.GivenName} {individual.FamilyName}".Trim()
-            : digitalId.Nickname ?? string.Empty;
+        // 4. Kullanıcı bilgilerini çöz — LoginCommandHandler/RegisterCommandHandler/
+        // CreateAdminUserCommandHandler ile AYNI paylaşılan helper kullanılıyor.
+        // Önceden bu mantık burada elle (Helper'dan bağımsız) tekrar yazılmıştı —
+        // ikisi arasında drift riski vardı (bkz. review notu). Artık tek kaynak.
+        var appUser = existingToken.ApplicationUser;
+        var (userId, userName, userIdentifier) = Helper.ResolveUserInfo(appUser);
 
-        var contactMedium  = digitalId.Credentials
-            .SelectMany(c => c.ContactMedia)
-            .FirstOrDefault();
-        var userIdentifier = contactMedium?.Email
-            ?? contactMedium?.PhoneNumber
-            ?? string.Empty;
-
+        var partyRole = appUser.DigitalIdentity.PartyRole;
         var roleCd = ReferenceDataIds.PartyRoleType.ToCode(partyRole.PartyRoleTypeId);
 
         // 5. Yeni token'ları üret
-        var accessToken  = _tokenService.CreateAccessToken(userName, appUser.Id, userIdentifier, roleCd);
-        var refreshToken = _tokenService.CreateRefreshToken(appUser.Id);
+        var accessToken  = _tokenService.CreateAccessToken(userName, userId, userIdentifier, roleCd);
+        var refreshToken = _tokenService.CreateRefreshToken(userId);
 
         await _refreshTokenRepository.AddAsync(refreshToken, cancellationToken);
 
         _logger.LogInformation(
-            "Refresh token yenilendi. UserId: {UserId}", appUser.Id);
+            "Refresh token yenilendi. UserId: {UserId}", userId);
 
         return new AuthResult
         {
-            UserId                 = appUser.Id,
+            UserId                 = userId,
             UserName               = userName,
             UserIdentifier         = userIdentifier,
             AccessToken            = accessToken.Token,

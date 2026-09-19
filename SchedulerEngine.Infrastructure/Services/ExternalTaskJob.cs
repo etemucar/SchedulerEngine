@@ -42,7 +42,7 @@ public class ExternalTaskJob : IExternalTaskJob
         // DÜZELTME (2026-09): Eskiden burada `idempotencyKey ??= Guid.NewGuid()...`
         // vardı — bu, idempotencyKey null geldiğinde (tipik recurring job
         // senaryosu) HER retry'da YENİ bir rastgele değer üretiyordu, çünkü
-        // Guid.NewGuid() her çağrıda farklı sonuç verir. Sonuç: FinYo/DocDes
+        // Guid.NewGuid() her çağrıda farklı sonuç verir. Sonuç: SchedulerEngine/DocDes
         // tarafındaki duplicate-kontrolü hiçbir zaman eşleşme bulamıyordu,
         // idempotency FİİLEN çalışmıyordu.
         //
@@ -50,7 +50,7 @@ public class ExternalTaskJob : IExternalTaskJob
         // (occurrence'ına) verdiği JobId kullanılıyor. JobId, Hangfire
         // tarafından retry'lar arasında SABİT kalır (aynı job'ın retry'ı,
         // yeni bir job değildir) — bu yüzden 1. denemede de, ağ hatası
-        // sonucu gerçekleşen 2./3. retry'de de aynı anahtar FinYo'ya gider.
+        // sonucu gerçekleşen 2./3. retry'de de aynı anahtar SchedulerEngine'ya gider.
         //
         // NOT: context?.BackgroundJob?.Id, job parametresi DEĞİL — Hangfire
         // tarafından metot her çağrıldığında runtime'da enjekte edilir, bu
@@ -98,11 +98,11 @@ public class ExternalTaskJob : IExternalTaskJob
         if (!string.IsNullOrEmpty(outboundEncrypted))
         {
             // DÜZELTME (2026-09): Eskiden burada `Authorization: Bearer <key>`
-            // gönderiliyordu. Ama FinYo/DocDes tarafındaki SchedulerWebhookController
+            // gönderiliyordu. Ama SchedulerEngine/DocDes tarafındaki SchedulerWebhookController
             // kimlik doğrulamasını "X-Outbound-Api-Key" header'ından okuyor — iki
             // taraf hiç eşleşmiyordu, her çağrı 401 ile dönüyordu (host tarafında
             // ilk başta bu, eksik/boş environment variable sanılmıştı; asıl neden
-            // header adı uyuşmazlığıydı). Ayrıca FinYo tarafında kullanıcı JWT auth'u
+            // header adı uyuşmazlığıydı). Ayrıca SchedulerEngine tarafında kullanıcı JWT auth'u
             // da "Authorization: Bearer" kullandığı için, aynı header'ı servisler
             // arası API key için de kullanmak iki farklı auth şemasını çakıştırıp
             // JwtBearer middleware'inin bu değeri JWT olarak parse etmeye çalışmasına

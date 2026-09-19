@@ -13,6 +13,8 @@ public interface IRepository<T, TKey> where T : ModelBase<TKey> {
     // ── Update ────────────────────────────────────────────────────────────
     void Update(T entity);
     Task UpdateAsync(T entity, CancellationToken ct = default);
+    void UpdateRange(IEnumerable<T> entities);
+    Task UpdateRangeAsync(IEnumerable<T> entities, CancellationToken ct = default);
 
     // ── Delete ────────────────────────────────────────────────────────────
     void Remove(T entity);
@@ -33,6 +35,22 @@ public interface IRepository<T, TKey> where T : ModelBase<TKey> {
     int Count(Expression<Func<T, bool>> predicate);
     Task<int> CountAsync(CancellationToken ct = default);
     Task<int> CountAsync(Expression<Func<T, bool>> predicate, CancellationToken ct = default);
+
+    // ── Count By Group ────────────────────────────────────────────────────
+    // Trending/aggregate feed'ler için (örn. "en çok beğenilen post" — Vote
+    // tablosunda TargetId'ye göre grupla, her grubun COUNT'unu al). SQL
+    // seviyesinde GROUP BY + COUNT(*) üretir — tüm satırları belleğe çekip
+    // C# tarafında gruplamaktan (ölçeklenmez) kaçınmak için eklendi.
+    IReadOnlyDictionary<TGroupKey, int> CountByGroup<TGroupKey>(
+        Expression<Func<T, bool>> predicate,
+        Expression<Func<T, TGroupKey>> groupSelector
+    ) where TGroupKey : notnull;
+
+    Task<IReadOnlyDictionary<TGroupKey, int>> CountByGroupAsync<TGroupKey>(
+        Expression<Func<T, bool>> predicate,
+        Expression<Func<T, TGroupKey>> groupSelector,
+        CancellationToken ct = default
+    ) where TGroupKey : notnull;
 
     // ── Find (sync) ───────────────────────────────────────────────────────
     IReadOnlyList<T> Find(

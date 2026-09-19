@@ -1,28 +1,46 @@
 using Moq;
+using AutoMapper;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using System.Linq.Expressions;
 using SchedulerEngine.Core.Repository;
 using SchedulerEngine.Core.Model;
-using SchedulerEngine.Core.TMFCommon;
 using SchedulerEngine.Service.Features.Queries;
 using SchedulerEngine.Service.Features.Handlers;
+using SchedulerEngine.Service.Dtos.Responses;
 
 namespace SchedulerEngine.Service.Tests.Features.Queries;
 
 public class GetPartyRoleListQueryHandlerTests
 {
-    private readonly Mock<IRepository<PartyRole, int>> _partyRoleRepositoryMock;
+    private readonly Mock<IRepository<PartyRole, int>>           _partyRoleRepositoryMock;
+    private readonly Mock<IMapper>                               _mapperMock;
     private readonly Mock<ILogger<GetPartyRoleListQueryHandler>> _loggerMock;
-    private readonly GetPartyRoleListQueryHandler _handler;
+    private readonly GetPartyRoleListQueryHandler                _handler;
 
     public GetPartyRoleListQueryHandlerTests()
     {
         _partyRoleRepositoryMock = new Mock<IRepository<PartyRole, int>>();
+        _mapperMock              = new Mock<IMapper>();
         _loggerMock              = new Mock<ILogger<GetPartyRoleListQueryHandler>>();
+
+        _mapperMock
+            .Setup(x => x.Map<PartyRoleResponse>(It.IsAny<PartyRole>()))
+            .Returns((PartyRole pr) => new PartyRoleResponse
+            {
+                Id              = pr.Id,
+                PartyId         = pr.PartyId,
+                PartyRoleTypeId = pr.PartyRoleTypeId,
+                ValidFor = new TimePeriodResponse
+                {
+                    StartDateTime = pr.ValidForStart,
+                    EndDateTime   = pr.ValidForEnd
+                }
+            });
 
         _handler = new GetPartyRoleListQueryHandler(
             _partyRoleRepositoryMock.Object,
+            _mapperMock.Object,
             _loggerMock.Object);
     }
 

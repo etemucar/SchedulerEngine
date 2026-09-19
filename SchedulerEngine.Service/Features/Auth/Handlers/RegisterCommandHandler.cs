@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
+using SchedulerEngine.Core.Data;
 using SchedulerEngine.Core.Repository;
 using SchedulerEngine.Core.Model;
 using SchedulerEngine.Core.Security;
@@ -19,6 +20,7 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, AuthResul
     private readonly IRepository<RefreshToken, int>    _refreshTokenRepository;
     private readonly ITokenService                     _tokenService;
     private readonly IPasswordHasher                   _passwordHasher;
+    private readonly IUnitOfWork                       _unitOfWork;
     private readonly ILogger<RegisterCommandHandler>   _logger;
 
     public RegisterCommandHandler(
@@ -27,6 +29,7 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, AuthResul
         IRepository<RefreshToken, int>    refreshTokenRepository,
         ITokenService                     tokenService,
         IPasswordHasher                   passwordHasher,
+        IUnitOfWork                       unitOfWork,
         ILogger<RegisterCommandHandler>   logger)
     {
         _partyRepository        = partyRepository;
@@ -34,6 +37,7 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, AuthResul
         _refreshTokenRepository = refreshTokenRepository;
         _tokenService           = tokenService;
         _passwordHasher         = passwordHasher;
+        _unitOfWork             = unitOfWork;
         _logger                 = logger;
     }
 
@@ -108,9 +112,6 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, AuthResul
         };
 
         // 3. Navigation chain'i manuel kur
-        // AuthHelper.ResolveUserInfo: appUser.DigitalIdentity.PartyRole.Party.Individual
-        // EF bu back-reference'ları SaveChanges sonrası doldurur;
-        // token üretimi AddAsync öncesi yapıldığı için burada elle set ediyoruz.
         var partyRole = party.PartyRoles!.First();
         var digitalId = partyRole.DigitalIdentity
             ?? throw new InvalidOperationException("DigitalIdentity oluşturulamadı.");
@@ -122,20 +123,30 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, AuthResul
         partyRole.Party           = party;
 
         digitalId.Credentials.First().ContactMedia.First().Party = party;
+        digitalId.Status = GeneralStatus.Active;
 
-        // 4. Token üret
-        var (userId, userName, userIdentifier) = Helper.ResolveUserInfo(appUser);
-        var accessToken = _tokenService.CreateAccessToken(userName, appUser.Id, userIdentifier, ReferenceDataIds.PartyRoleType.UserCd);
-        var refreshToken = _tokenService.CreateRefreshToken(appUser.Id);
-
-        appUser.RefreshTokens.Add(refreshToken);
-
-        // 5. Kaydet
+        // 4. Kaydet — DÜZELTME (kritik): SaveChanges, token üretiminden ÖNCE
+        // buraya taşındı. Önceki halde appUser.Id, AddAsync'TEN BİLE ÖNCE
+        // token'a gömülüyordu — yani appUser.Id garanti 0'dı (int/DB-generated
+        // key). Sonuç: TokenService.CreateAccessToken, JWT'nin ClaimTypes.Sid
+        // claim'ine 0 yazıyordu. CurrentUserService.UserId bu claim'i okuyor
+        // (bkz. CurrentUserService.cs), yani ilk kayıt token'ıyla yapılan HER
+        // istek, PartyRoleId çözümlemesinde "ApplicationUser Id=0 bulunamadı"
+        // (NotFoundException) ile patlıyordu.
         await _partyRepository.AddAsync(party, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // 5. Token üret — artık appUser.Id gerçek, DB'den dönen değeri taşıyor.
+        var (userId, userName, userIdentifier) = Helper.ResolveUserInfo(appUser);
+        var accessToken = _tokenService.CreateAccessToken(userName, userId, userIdentifier, ReferenceDataIds.PartyRoleType.UserCd);
+        var refreshToken = _tokenService.CreateRefreshToken(userId);
+
+        await _refreshTokenRepository.AddAsync(refreshToken, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
             "Yeni kullanıcı kaydoldu. UserId: {UserId}, Identifier: {Identifier}",
-            appUser.Id, request.Identifier);
+            userId, request.Identifier);
 
         return new AuthResult
         {

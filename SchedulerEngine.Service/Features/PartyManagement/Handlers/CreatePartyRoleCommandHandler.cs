@@ -1,5 +1,7 @@
 using MediatR;
+using AutoMapper;
 using Microsoft.Extensions.Logging;
+using SchedulerEngine.Core.Data;
 using SchedulerEngine.Service.Dtos.Responses;
 using SchedulerEngine.Service.Features.Commands;
 using SchedulerEngine.Core.Repository;
@@ -10,46 +12,45 @@ namespace SchedulerEngine.Service.Features.Handlers;
 
 public class CreatePartyRoleCommandHandler : IRequestHandler<CreatePartyRoleCommand, PartyRoleResponse>
 {
-    private readonly IRepository<PartyRole, int>                   _partyRoleRepository;
-    private readonly ILogger<CreatePartyRoleCommandHandler>        _logger;
+    private readonly IRepository<PartyRole, int> _partyRoleRepository;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IMapper _mapper;
+    private readonly ILogger<CreatePartyRoleCommandHandler> _logger;
 
     public CreatePartyRoleCommandHandler(
-        IRepository<PartyRole, int>               partyRoleRepository,
-        ILogger<CreatePartyRoleCommandHandler>    logger)
+        IRepository<PartyRole, int> partyRoleRepository,
+        IUnitOfWork unitOfWork,
+        IMapper mapper,
+        ILogger<CreatePartyRoleCommandHandler> logger)
     {
         _partyRoleRepository = partyRoleRepository;
-        _logger              = logger;
+        _unitOfWork = unitOfWork;
+        _mapper = mapper;
+        _logger = logger;
     }
 
     public async Task<PartyRoleResponse> Handle(CreatePartyRoleCommand request, CancellationToken cancellationToken)
     {
         var partyRole = new PartyRole
         {
-            PartyId         = request.PartyId,
+            PartyId = request.PartyId,
             PartyRoleTypeId = request.PartyRoleTypeId,
-            // null gelirse Min/Max ile aç — kural 4
-            ValidForStart   = request.ValidForStart ?? DateTime.MinValue,
-            ValidForEnd     = request.ValidForEnd   ?? DateTime.MaxValue,
+            ValidForStart = request.ValidForStart ?? DateTime.MinValue,
+            ValidForEnd = request.ValidForEnd ?? DateTime.MaxValue,
         };
 
         await _partyRoleRepository.AddAsync(partyRole, cancellationToken);
+
+        // partyRole.Id, log ve response'ta doğru görünsün diye SaveChanges
+        // burada manuel tetikleniyor (bkz. CreateIndividualCommandHandler'daki
+        // aynı gerekçe — TransactionalBehavior'ın SaveChanges'i next()
+        // döndükten SONRA çağırdığı unutulmamalı).
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
             "PartyRole oluşturuldu. PartyId: {PartyId}, PartyRoleTypeCd: {PartyRoleTypeCd}, PartyRoleId: {PartyRoleId}",
             partyRole.PartyId, partyRole.PartyRoleTypeId, partyRole.Id);
 
-        return MapToResponse(partyRole);
+        return _mapper.Map<PartyRoleResponse>(partyRole);
     }
-
-    private static PartyRoleResponse MapToResponse(PartyRole partyRole) => new()
-    {
-        Id              = partyRole.Id,
-        PartyId         = partyRole.PartyId,
-        PartyRoleTypeId = partyRole.PartyRoleTypeId,
-        ValidFor = new TimePeriodResponse
-        {
-            StartDateTime = partyRole.ValidForStart,
-            EndDateTime   = partyRole.ValidForEnd
-        }
-    };
 }

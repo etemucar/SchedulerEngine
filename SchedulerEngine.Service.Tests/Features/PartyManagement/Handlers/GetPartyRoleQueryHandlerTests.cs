@@ -1,27 +1,49 @@
 using Moq;
+using AutoMapper;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
+using SchedulerEngine.Core.Exceptions;
 using SchedulerEngine.Core.Repository;
 using SchedulerEngine.Core.Model;
 using SchedulerEngine.Core.TMFCommon;
+using SchedulerEngine.Service.Dtos.Responses;
 using SchedulerEngine.Service.Features.Queries;
 using SchedulerEngine.Service.Features.Handlers;
 
-namespace SchedulerEngine.Service.Tests.Features.Queries;
+namespace SchedulerEngine.Service.Tests.Features.Handlers;
 
 public class GetPartyRoleQueryHandlerTests
 {
     private readonly Mock<IRepository<PartyRole, int>>          _partyRoleRepositoryMock;
+    private readonly Mock<IMapper>                              _mapperMock;
     private readonly Mock<ILogger<GetPartyRoleQueryHandler>>    _loggerMock;
     private readonly GetPartyRoleQueryHandler                   _handler;
 
     public GetPartyRoleQueryHandlerTests()
     {
         _partyRoleRepositoryMock = new Mock<IRepository<PartyRole, int>>();
+        _mapperMock              = new Mock<IMapper>();
         _loggerMock              = new Mock<ILogger<GetPartyRoleQueryHandler>>();
+
+        // Handler'ı AutoMapper profilinden izole tutmak için manuel mapping — sadece
+        // testlerin assert ettiği alanları taşıyor.
+        _mapperMock
+            .Setup(x => x.Map<PartyRoleResponse>(It.IsAny<PartyRole>()))
+            .Returns((PartyRole src) => new PartyRoleResponse
+            {
+                Id              = src.Id,
+                PartyId         = src.PartyId,
+                PartyRoleTypeId = src.PartyRoleTypeId,
+                ValidFor        = new TimePeriodResponse
+                {
+                    StartDateTime = src.ValidForStart,
+                    EndDateTime   = src.ValidForEnd
+                }
+            });
 
         _handler = new GetPartyRoleQueryHandler(
             _partyRoleRepositoryMock.Object,
+            _mapperMock.Object,
             _loggerMock.Object);
     }
 
@@ -53,18 +75,22 @@ public class GetPartyRoleQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_NonExistingPartyRole_ShouldReturnNull()
+    public async Task Handle_NonExistingPartyRole_ShouldThrowNotFoundException()
     {
-        // Arrange
+        // Arrange — handler artık null dönmüyor, NotFoundException fırlatıyor
+        // (bkz. GetPartyRoleQueryHandler.cs satır 33)
         _partyRoleRepositoryMock
             .Setup(x => x.GetByIdAsync(99, It.IsAny<CancellationToken>()))
             .ReturnsAsync((PartyRole?)null);
 
         // Act
-        var result = await _handler.Handle(new GetPartyRoleQuery { Id = 99 }, TestContext.Current.CancellationToken);
+        Func<Task> act = () => _handler.Handle(
+            new GetPartyRoleQuery { Id = 99 },
+            TestContext.Current.CancellationToken);
 
         // Assert
-        result.Should().BeNull();
+        await act.Should().ThrowAsync<NotFoundException>()
+            .WithMessage("*99*");
     }
 
     [Fact]

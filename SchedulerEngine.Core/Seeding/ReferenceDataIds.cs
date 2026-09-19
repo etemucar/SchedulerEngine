@@ -32,7 +32,7 @@ public static class ReferenceDataIds
         public const int User           = 2;
         public const int Customer       = 3;
         public const int BillAccount    = 4;
-        public const int ExternalService = 5; // FinYo, DocDes gibi servis-servis çağıran sistemler
+        public const int ExternalService = 5; // SchedulerEngine, DocDes gibi servis-servis çağıran sistemler
 
         public const string SiteAdminCd      = "SITE_ADMIN";
         public const string UserCd           = "USER";

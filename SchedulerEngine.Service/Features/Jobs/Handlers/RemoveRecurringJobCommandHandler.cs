@@ -24,10 +24,10 @@ public class RemoveRecurringJobCommandHandler : IRequestHandler<RemoveRecurringJ
         // AddOrUpdateRecurringJobCommandHandler'daki ile AYNI prefix mantığı -
         // gerçek Hangfire id'sini yeniden üretmemiz lazım, yoksa caller'ın
         // kendi (prefix'siz) id'siyle silme denemesi hiçbir şeyi bulamaz.
-        // Bu aynı zamanda örtük bir sahiplik kontrolü: FinYo, DocDes'in
+        // Bu aynı zamanda örtük bir sahiplik kontrolü: SchedulerEngine, DocDes'in
         // job'unu SADECE kendi ServiceName'iyle prefix'lenmiş id'yi tahmin
         // edip üretebilseydi silebilirdi - ki bunu yapamaz çünkü prefix
-        // request.CallerCredentialId'den (FinYo'nun KENDİ credential'ı)
+        // request.CallerCredentialId'den (SchedulerEngine'nun KENDİ credential'ı)
         // çözülüyor, request body'de gelen serbest bir alan değil.
         var serviceName = await ResolveServiceNameAsync(request.CallerCredentialId, ct);
         var hangfireJobId = $"{serviceName.Replace(':', '-')}:{request.RecurringJobId}";

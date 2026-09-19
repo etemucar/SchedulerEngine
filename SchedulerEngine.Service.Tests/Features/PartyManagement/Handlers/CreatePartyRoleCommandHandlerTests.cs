@@ -1,27 +1,55 @@
 using Moq;
+using AutoMapper;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
+using SchedulerEngine.Core.Data;
 using SchedulerEngine.Core.Repository;
 using SchedulerEngine.Core.Model;
 using SchedulerEngine.Service.Features.Commands;
 using SchedulerEngine.Service.Features.Handlers;
-using SchedulerEngine.Service.Dtos.Requests;
+using SchedulerEngine.Service.Dtos.Responses;
 
 namespace SchedulerEngine.Service.Tests.Features.Handlers;
 
 public class CreatePartyRoleCommandHandlerTests
 {
     private readonly Mock<IRepository<PartyRole, int>>            _partyRoleRepositoryMock;
+    private readonly Mock<IUnitOfWork>                            _unitOfWorkMock;
+    private readonly Mock<IMapper>                                _mapperMock;
     private readonly Mock<ILogger<CreatePartyRoleCommandHandler>> _loggerMock;
     private readonly CreatePartyRoleCommandHandler                _handler;
 
     public CreatePartyRoleCommandHandlerTests()
     {
         _partyRoleRepositoryMock = new Mock<IRepository<PartyRole, int>>();
+        _unitOfWorkMock          = new Mock<IUnitOfWork>();
+        _mapperMock              = new Mock<IMapper>();
         _loggerMock              = new Mock<ILogger<CreatePartyRoleCommandHandler>>();
+
+        // DÜZELTME: handler artık IUnitOfWork alıyor — partyRole.Id'nin
+        // log/response'ta doğru görünmesi için SaveChanges manuel tetikleniyor.
+        _unitOfWorkMock
+            .Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+
+        _mapperMock
+            .Setup(x => x.Map<PartyRoleResponse>(It.IsAny<PartyRole>()))
+            .Returns((PartyRole pr) => new PartyRoleResponse
+            {
+                Id              = pr.Id,
+                PartyId         = pr.PartyId,
+                PartyRoleTypeId = pr.PartyRoleTypeId,
+                ValidFor = new TimePeriodResponse
+                {
+                    StartDateTime = pr.ValidForStart,
+                    EndDateTime   = pr.ValidForEnd
+                }
+            });
 
         _handler = new CreatePartyRoleCommandHandler(
             _partyRoleRepositoryMock.Object,
+            _unitOfWorkMock.Object,
+            _mapperMock.Object,
             _loggerMock.Object);
     }
 
@@ -35,17 +63,11 @@ public class CreatePartyRoleCommandHandlerTests
             PartyRoleTypeId = 1
         };
 
-        _partyRoleRepositoryMock
-            .Setup(x => x.AddAsync(It.IsAny<PartyRole>(), It.IsAny<CancellationToken>()))
-            .Callback<PartyRole, CancellationToken>((pr, _) => pr.Id = 10)
-            .Returns(Task.CompletedTask);
-
         // Act
         var result = await _handler.Handle(command, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().NotBeNull();
-        result.Id.Should().Be(10);
         result.PartyId.Should().Be(command.PartyId);
         result.PartyRoleTypeId.Should().Be(command.PartyRoleTypeId);
     }
@@ -60,16 +82,25 @@ public class CreatePartyRoleCommandHandlerTests
             PartyRoleTypeId = 1
         };
 
-        _partyRoleRepositoryMock
-            .Setup(x => x.AddAsync(It.IsAny<PartyRole>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
         // Act
         await _handler.Handle(command, TestContext.Current.CancellationToken);
 
         // Assert
         _partyRoleRepositoryMock.Verify(
             x => x.AddAsync(It.IsAny<PartyRole>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_ValidCommand_ShouldSaveChangesAfterAdding()
+    {
+        // YENİ TEST: regresyon koruması.
+        var command = new CreatePartyRoleCommand { PartyId = 1, PartyRoleTypeId = 1 };
+
+        await _handler.Handle(command, TestContext.Current.CancellationToken);
+
+        _unitOfWorkMock.Verify(
+            x => x.SaveChangesAsync(It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -94,10 +125,8 @@ public class CreatePartyRoleCommandHandlerTests
         // Act
         await _handler.Handle(command, TestContext.Current.CancellationToken);
 
-        // Assert — DateTime? null değil, DateTime.MinValue/MaxValue olmalı
-        capturedPartyRole.ValidForStart.Should().NotBeNull();
+        // Assert
         capturedPartyRole.ValidForStart.Should().Be(DateTime.MinValue);
-        capturedPartyRole.ValidForEnd.Should().NotBeNull();
         capturedPartyRole.ValidForEnd.Should().Be(DateTime.MaxValue);
     }
 

@@ -1,30 +1,65 @@
 using Moq;
+using AutoMapper;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
+using SchedulerEngine.Core.Data;
 using SchedulerEngine.Core.Repository;
 using SchedulerEngine.Core.Model;
 using SchedulerEngine.Service.Features.Commands;
 using SchedulerEngine.Service.Features.Handlers;
-using SchedulerEngine.Service.Dtos.Requests;
+using SchedulerEngine.Service.Dtos.Responses;
 
 namespace SchedulerEngine.Service.Tests.Features.Handlers;
 
 public class CreateOrganizationCommandHandlerTests
 {
-    private readonly Mock<IRepository<Party, int>>                     _partyRepositoryMock;
-    private readonly Mock<IRepository<Organization, int>>              _organizationRepositoryMock;
-    private readonly Mock<ILogger<CreateOrganizationCommandHandler>>   _loggerMock;
-    private readonly CreateOrganizationCommandHandler                  _handler;
+    private readonly Mock<IRepository<Party, int>>                   _partyRepositoryMock;
+    private readonly Mock<IUnitOfWork>                               _unitOfWorkMock;
+    private readonly Mock<IMapper>                                   _mapperMock;
+    private readonly Mock<ILogger<CreateOrganizationCommandHandler>> _loggerMock;
+    private readonly CreateOrganizationCommandHandler                _handler;
 
     public CreateOrganizationCommandHandlerTests()
     {
-        _partyRepositoryMock        = new Mock<IRepository<Party, int>>();
-        _organizationRepositoryMock = new Mock<IRepository<Organization, int>>();
-        _loggerMock                 = new Mock<ILogger<CreateOrganizationCommandHandler>>();
+        _partyRepositoryMock = new Mock<IRepository<Party, int>>();
+        _unitOfWorkMock      = new Mock<IUnitOfWork>();
+        _mapperMock          = new Mock<IMapper>();
+        _loggerMock          = new Mock<ILogger<CreateOrganizationCommandHandler>>();
+
+        _partyRepositoryMock
+            .Setup(x => x.AddAsync(It.IsAny<Party>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        // DÜZELTME: aynı gerekçe — CreateIndividualCommandHandlerTests'e bkz.
+        // IRepository<Organization,int> handler'dan tamamen kaldırıldı, FK artık
+        // navigation (party.Organization = organization) ile kuruluyor.
+        _unitOfWorkMock
+            .Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+
+        _mapperMock
+            .Setup(x => x.Map<OrganizationResponse>(It.IsAny<Organization>()))
+            .Returns((Organization o) => new OrganizationResponse
+            {
+                Id                  = o.Id,
+                Name                = o.Name,
+                TaxOffice           = o.TaxOffice,
+                TaxNumber           = o.TaxNumber,
+                IdentityNumber      = o.IdentityNumber,
+                TradeName           = o.TradeName,
+                TradeRegisterNumber = o.TradeRegisterNumber,
+                MersisNo            = o.MersisNo,
+                ValidFor = new TimePeriodResponse
+                {
+                    StartDateTime = o.ValidForStart,
+                    EndDateTime   = o.ValidForEnd
+                }
+            });
 
         _handler = new CreateOrganizationCommandHandler(
             _partyRepositoryMock.Object,
-            _organizationRepositoryMock.Object,
+            _unitOfWorkMock.Object,
+            _mapperMock.Object,
             _loggerMock.Object);
     }
 
@@ -39,22 +74,11 @@ public class CreateOrganizationCommandHandlerTests
             TaxNumber = 1234567890
         };
 
-        _partyRepositoryMock
-            .Setup(x => x.AddAsync(It.IsAny<Party>(), It.IsAny<CancellationToken>()))
-            .Callback<Party, CancellationToken>((party, _) => party.Id = 1)
-            .Returns(Task.CompletedTask);
-
-        _organizationRepositoryMock
-            .Setup(x => x.AddAsync(It.IsAny<Organization>(), It.IsAny<CancellationToken>()))
-            .Callback<Organization, CancellationToken>((org, _) => org.Id = 10)
-            .Returns(Task.CompletedTask);
-
         // Act
         var result = await _handler.Handle(command, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().NotBeNull();
-        result.Id.Should().Be(10);
         result.Name.Should().Be(command.Name);
         result.TaxOffice.Should().Be(command.TaxOffice);
         result.TaxNumber.Should().Be(command.TaxNumber);
@@ -71,14 +95,6 @@ public class CreateOrganizationCommandHandlerTests
             TaxNumber = 1234567890
         };
 
-        _partyRepositoryMock
-            .Setup(x => x.AddAsync(It.IsAny<Party>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
-        _organizationRepositoryMock
-            .Setup(x => x.AddAsync(It.IsAny<Organization>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
         // Act
         await _handler.Handle(command, TestContext.Current.CancellationToken);
 
@@ -89,9 +105,10 @@ public class CreateOrganizationCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ValidCommand_ShouldCreateOrganizationWithCorrectPartyId()
+    public async Task Handle_ValidCommand_ShouldLinkOrganizationToPartyViaNavigation()
     {
-        // Arrange
+        // DEĞİŞTİ: bkz. CreateIndividualCommandHandlerTests'teki aynı gerekçe —
+        // FK artık navigation ile kuruluyor, elle .PartyId atanmıyor.
         var command = new CreateOrganizationCommand
         {
             Name      = "Test A.Ş.",
@@ -99,29 +116,45 @@ public class CreateOrganizationCommandHandlerTests
             TaxNumber = 1234567890
         };
 
+        Party? capturedParty = null;
         _partyRepositoryMock
             .Setup(x => x.AddAsync(It.IsAny<Party>(), It.IsAny<CancellationToken>()))
-            .Callback<Party, CancellationToken>((party, _) => party.Id = 42)
-            .Returns(Task.CompletedTask);
-
-        Organization capturedOrganization = null!;
-        _organizationRepositoryMock
-            .Setup(x => x.AddAsync(It.IsAny<Organization>(), It.IsAny<CancellationToken>()))
-            .Callback<Organization, CancellationToken>((org, _) => capturedOrganization = org)
+            .Callback<Party, CancellationToken>((party, _) => capturedParty = party)
             .Returns(Task.CompletedTask);
 
         // Act
         await _handler.Handle(command, TestContext.Current.CancellationToken);
 
         // Assert
-        capturedOrganization.Should().NotBeNull();
-        capturedOrganization.PartyId.Should().Be(42);
+        capturedParty.Should().NotBeNull();
+        capturedParty!.Organization.Should().NotBeNull();
+        capturedParty.Organization!.Name.Should().Be("Test A.Ş.");
+    }
+
+    [Fact]
+    public async Task Handle_ValidCommand_ShouldSaveChangesAfterAddingParty()
+    {
+        // YENİ TEST: regresyon koruması.
+        var command = new CreateOrganizationCommand
+        {
+            Name      = "Test A.Ş.",
+            TaxOffice = "Kadıköy",
+            TaxNumber = 1234567890
+        };
+
+        // Act
+        await _handler.Handle(command, TestContext.Current.CancellationToken);
+
+        // Assert
+        _unitOfWorkMock.Verify(
+            x => x.SaveChangesAsync(It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
     public async Task Handle_WithoutValidFor_ShouldSetMinMaxDateTime()
     {
-        // Arrange — ValidFor gönderilmediğinde handler DateTime.MinValue/MaxValue set etmeli
+        // Arrange
         var command = new CreateOrganizationCommand
         {
             Name          = "Test A.Ş.",
@@ -131,24 +164,18 @@ public class CreateOrganizationCommandHandlerTests
             ValidForEnd   = null
         };
 
+        Party? capturedParty = null;
         _partyRepositoryMock
             .Setup(x => x.AddAsync(It.IsAny<Party>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
-        Organization capturedOrganization = null!;
-        _organizationRepositoryMock
-            .Setup(x => x.AddAsync(It.IsAny<Organization>(), It.IsAny<CancellationToken>()))
-            .Callback<Organization, CancellationToken>((org, _) => capturedOrganization = org)
+            .Callback<Party, CancellationToken>((party, _) => capturedParty = party)
             .Returns(Task.CompletedTask);
 
         // Act
         await _handler.Handle(command, TestContext.Current.CancellationToken);
 
-        // Assert — DateTime? null değil, DateTime.MinValue/MaxValue olmalı
-        capturedOrganization.ValidForStart.Should().NotBeNull();
-        capturedOrganization.ValidForStart.Should().Be(DateTime.MinValue);
-        capturedOrganization.ValidForEnd.Should().NotBeNull();
-        capturedOrganization.ValidForEnd.Should().Be(DateTime.MaxValue);
+        // Assert
+        capturedParty!.Organization!.ValidForStart.Should().Be(DateTime.MinValue);
+        capturedParty.Organization.ValidForEnd.Should().Be(DateTime.MaxValue);
     }
 
     [Fact]
@@ -167,21 +194,17 @@ public class CreateOrganizationCommandHandlerTests
             ValidForEnd   = endDate
         };
 
+        Party? capturedParty = null;
         _partyRepositoryMock
             .Setup(x => x.AddAsync(It.IsAny<Party>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
-        Organization capturedOrganization = null!;
-        _organizationRepositoryMock
-            .Setup(x => x.AddAsync(It.IsAny<Organization>(), It.IsAny<CancellationToken>()))
-            .Callback<Organization, CancellationToken>((org, _) => capturedOrganization = org)
+            .Callback<Party, CancellationToken>((party, _) => capturedParty = party)
             .Returns(Task.CompletedTask);
 
         // Act
         await _handler.Handle(command, TestContext.Current.CancellationToken);
 
         // Assert
-        capturedOrganization.ValidForStart.Should().Be(startDate);
-        capturedOrganization.ValidForEnd.Should().Be(endDate);
+        capturedParty!.Organization!.ValidForStart.Should().Be(startDate);
+        capturedParty.Organization.ValidForEnd.Should().Be(endDate);
     }
 }

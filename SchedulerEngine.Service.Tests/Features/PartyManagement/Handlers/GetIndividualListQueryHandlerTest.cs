@@ -1,28 +1,47 @@
 using Moq;
+using AutoMapper;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using System.Linq.Expressions;
 using SchedulerEngine.Core.Repository;
 using SchedulerEngine.Core.Model;
-using SchedulerEngine.Core.TMFCommon;
 using SchedulerEngine.Service.Features.Queries;
 using SchedulerEngine.Service.Features.Handlers;
+using SchedulerEngine.Service.Dtos.Responses;
 
 namespace SchedulerEngine.Service.Tests.Features.Queries;
 
 public class GetIndividualListQueryHandlerTests
 {
-    private readonly Mock<IRepository<Individual, int>> _individualRepositoryMock;
+    private readonly Mock<IRepository<Individual, int>>           _individualRepositoryMock;
+    private readonly Mock<IMapper>                                _mapperMock;
     private readonly Mock<ILogger<GetIndividualListQueryHandler>> _loggerMock;
-    private readonly GetIndividualListQueryHandler _handler;
+    private readonly GetIndividualListQueryHandler                _handler;
 
     public GetIndividualListQueryHandlerTests()
     {
         _individualRepositoryMock = new Mock<IRepository<Individual, int>>();
+        _mapperMock               = new Mock<IMapper>();
         _loggerMock               = new Mock<ILogger<GetIndividualListQueryHandler>>();
+
+        // DÜZELTME: handler artık IMapper alıyor. Gerçek mapping'i taklit ediyoruz.
+        _mapperMock
+            .Setup(x => x.Map<IndividualResponse>(It.IsAny<Individual>()))
+            .Returns((Individual i) => new IndividualResponse
+            {
+                Id         = i.Id,
+                GivenName  = i.GivenName,
+                FamilyName = i.FamilyName,
+                ValidFor = new TimePeriodResponse
+                {
+                    StartDateTime = i.ValidForStart,
+                    EndDateTime   = i.ValidForEnd
+                }
+            });
 
         _handler = new GetIndividualListQueryHandler(
             _individualRepositoryMock.Object,
+            _mapperMock.Object,
             _loggerMock.Object);
     }
 

@@ -1,4 +1,5 @@
 using Moq;
+using AutoMapper;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using System.Linq.Expressions;
@@ -11,6 +12,7 @@ using SchedulerEngine.Core.Exceptions;
 using SchedulerEngine.Service.Features.Commands;
 using SchedulerEngine.Service.Features.Handlers;
 using SchedulerEngine.Service.Dtos.Requests;
+using SchedulerEngine.Service.Dtos.Responses;
 
 namespace SchedulerEngine.Service.Tests.Features.Handlers;
 
@@ -21,6 +23,7 @@ public class CreateDigitalIdentityCommandHandlerTests
     private readonly Mock<IRepository<PartyRole, int>>        _partyRoleRepositoryMock;
     private readonly Mock<ICurrentUserService>                _currentUserServiceMock;
     private readonly Mock<IPasswordHasher>                    _passwordHasherMock;
+    private readonly Mock<IMapper>                            _mapperMock;
     private readonly Mock<ILogger<CreateDigitalIdentityCommandHandler>> _loggerMock;
     private readonly CreateDigitalIdentityCommandHandler      _handler;
 
@@ -33,7 +36,24 @@ public class CreateDigitalIdentityCommandHandlerTests
         _partyRoleRepositoryMock       = new Mock<IRepository<PartyRole, int>>();
         _currentUserServiceMock        = new Mock<ICurrentUserService>();
         _passwordHasherMock            = new Mock<IPasswordHasher>();
+        _mapperMock                    = new Mock<IMapper>();
         _loggerMock                    = new Mock<ILogger<CreateDigitalIdentityCommandHandler>>();
+
+        // DÜZELTME: handler artık IMapper alıyor (mapper standardizasyon turu —
+        // static MapToResponse yerine CreateMap<DigitalIdentity, DigitalIdentityResponse>
+        // kullanılıyor). Testlerin Assert kısımları result.Nickname/Status/PartyRoleId
+        // gibi alanlara baktığı için, gerçek mapping'i burada TAKLİT ediyoruz —
+        // aksi halde Moq varsayılan olarak null/default dönüp assertion'ları kırar.
+        _mapperMock
+            .Setup(m => m.Map<DigitalIdentityResponse>(It.IsAny<DigitalIdentity>()))
+            .Returns((DigitalIdentity d) => new DigitalIdentityResponse
+            {
+                Id                  = d.Id,
+                Nickname            = d.Nickname,
+                Status              = d.Status,
+                DigitalIdentityDate = d.DigitalIdentityDate,
+                PartyRoleId         = d.PartyRoleId
+            });
 
         _handler = new CreateDigitalIdentityCommandHandler(
             _digitalIdentityRepositoryMock.Object,
@@ -41,6 +61,7 @@ public class CreateDigitalIdentityCommandHandlerTests
             _partyRoleRepositoryMock.Object,
             _currentUserServiceMock.Object,
             _passwordHasherMock.Object,
+            _mapperMock.Object,
             _loggerMock.Object);
     }
 

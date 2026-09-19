@@ -125,7 +125,7 @@ builder.Services.AddHangfireServer(options =>
     options.Queues = new[] { "default", "critical" };
 });
 
-// ---- 10. FinYo, DocDes gibi dış servislerin Job API'sine erişimi için ----
+// ---- 10. SchedulerEngine, DocDes gibi dış servislerin Job API'sine erişimi için ----
 // API Key authentication (ayrı bir scheme, JWT'den bağımsız).
 // AddAuthentication() burada parametresiz çağrılıyor - AddJwtAuthentication'ın
 // (yukarıda, madde 8) kurduğu default scheme'i ETKİLEMEZ, sadece yeni bir
@@ -135,6 +135,33 @@ builder.Services.AddAuthentication()
         ApiKeyAuthConstants.SchemeName, options => { });
 
 var app = builder.Build();
+
+// ---- Otomatik Migration ----
+// Bekleyen EF Core migration'larını uygulama açılırken uygular. Bağlantı Docker
+// ağı içinden (Coolify internal host) kurulduğu için veritabanının public olması
+// gerekmez. Hangfire dashboard/server'dan ÖNCE çalışmalı; o yüzden Build()'in hemen
+// altında. Hangfire kendi "hangfire" şemasını kendisi oluşturur, EF ile çakışmaz.
+// Tek instance için güvenli; birden fazla replika çalıştırılırsa migration'ı ayrı
+// bir deployment adımına taşıyın.
+//
+// ÖNEMLİ: Microsoft.Extensions.ApiDescription.Server paketi, build (dotnet build/publish)
+// sırasında OpenAPI dokümanı üretmek için uygulamayı çalıştırır (entry assembly adı
+// "GetDocument.Insider"). Bu sırada migration çalışırsa build veritabanına bağlanmaya
+// çalışır ve veritabanına erişemeyen ortamlarda (örn. Coolify'ın Docker build'i) başarısız
+// olur. Bu yüzden build-time doküman üretiminde migration atlanır.
+var isBuildTimeDocGeneration =
+    System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name == "GetDocument.Insider";
+
+if (!isBuildTimeDocGeneration)
+{
+    using var scope = app.Services.CreateScope();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    var db = scope.ServiceProvider.GetRequiredService<SchedulerEngineDbContext>();
+
+    logger.LogInformation("Veritabanı migration'ları uygulanıyor...");
+    await db.Database.MigrateAsync();
+    logger.LogInformation("Veritabanı migration'ları tamamlandı.");
+}
 
 var forwardedHeadersOptions = new ForwardedHeadersOptions
 {

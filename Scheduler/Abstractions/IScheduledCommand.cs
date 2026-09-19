@@ -3,7 +3,7 @@ using MediatR;
 namespace Scheduler.Abstractions;
 
 /// <summary>
-/// Scheduler.csproj'un host'un (FinYo/DocDes) MediatR command'larını
+/// Scheduler.csproj'un host'un (SchedulerEngine/DocDes) MediatR command'larını
 /// tanımadan tetikleyebilmesini sağlayan sarmalayıcı arayüz.
 ///
 /// Host tarafında (Core veya Service katmanında) küçük bir implementasyon

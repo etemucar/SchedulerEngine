@@ -1,28 +1,51 @@
 using Moq;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
+using SchedulerEngine.Core.Exceptions;
 using SchedulerEngine.Core.Repository;
 using SchedulerEngine.Core.Model;
 using SchedulerEngine.Core.TMFCommon;
+using SchedulerEngine.Service.Dtos.Responses;
 using SchedulerEngine.Service.Features.Commands;
 using SchedulerEngine.Service.Features.Handlers;
 using SchedulerEngine.Service.Dtos.Requests;
+using AutoMapper;
 
 namespace SchedulerEngine.Service.Tests.Features.Handlers;
 
 public class PatchOrganizationCommandHandlerTests
 {
     private readonly Mock<IRepository<Organization, int>> _organizationRepositoryMock;
+    private readonly Mock<IMapper> _mapperMock;
     private readonly Mock<ILogger<PatchOrganizationCommandHandler>> _loggerMock;
     private readonly PatchOrganizationCommandHandler _handler;
 
     public PatchOrganizationCommandHandlerTests()
     {
         _organizationRepositoryMock = new Mock<IRepository<Organization, int>>();
+        _mapperMock                  = new Mock<IMapper>();
         _loggerMock                 = new Mock<ILogger<PatchOrganizationCommandHandler>>();
+
+        // Diğer Patch*CommandHandlerTests sınıflarında olduğu gibi — bu mapping
+        // eksikti, bu yüzden result her zaman null dönüyordu (Moq, kurulmamış
+        // bir Map<> çağrısı için default(T) döner).
+        _mapperMock
+            .Setup(x => x.Map<OrganizationResponse>(It.IsAny<Organization>()))
+            .Returns((Organization src) => new OrganizationResponse
+            {
+                Id        = src.Id,
+                Name      = src.Name,
+                TaxOffice = src.TaxOffice,
+                ValidFor  = new TimePeriodResponse
+                {
+                    StartDateTime = src.ValidForStart,
+                    EndDateTime   = src.ValidForEnd
+                }
+            });
 
         _handler = new PatchOrganizationCommandHandler(
             _organizationRepositoryMock.Object,
+            _mapperMock.Object,
             _loggerMock.Object);
     }
 
@@ -60,18 +83,22 @@ public class PatchOrganizationCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_NonExistingOrganization_ShouldReturnNull()
+    public async Task Handle_NonExistingOrganization_ShouldThrowNotFoundException()
     {
-        // Arrange
+        // Arrange — handler artık null dönmüyor, NotFoundException fırlatıyor
+        // (bkz. PatchOrganizationCommandHandler.cs satır 33)
         _organizationRepositoryMock
             .Setup(x => x.GetByIdAsync(99, It.IsAny<CancellationToken>()))
             .ReturnsAsync((Organization?)null);
 
         // Act
-        var result = await _handler.Handle(new PatchOrganizationCommand { Id = 99 }, TestContext.Current.CancellationToken);
+        Func<Task> act = () => _handler.Handle(
+            new PatchOrganizationCommand { Id = 99 },
+            TestContext.Current.CancellationToken);
 
         // Assert
-        result.Should().BeNull();
+        await act.Should().ThrowAsync<NotFoundException>()
+            .WithMessage("*99*");
     }
 
     [Fact]

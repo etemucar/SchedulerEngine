@@ -1,5 +1,6 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
+using SchedulerEngine.Core.Data;
 using SchedulerEngine.Core.Repository;
 using SchedulerEngine.Core.Model;
 using SchedulerEngine.Core.Security;
@@ -19,6 +20,7 @@ public class CreateAdminUserCommandHandler : IRequestHandler<CreateAdminUserComm
     private readonly IRepository<ApplicationUser, int>    _userRepository;
     private readonly ICurrentUserService                  _currentUserService; // sadece audit log için — yetki kontrolü [Authorize(Policy="SiteAdmin")]'de
     private readonly IPasswordHasher                      _passwordHasher;
+    private readonly IUnitOfWork                          _unitOfWork;
     private readonly ILogger<CreateAdminUserCommandHandler> _logger;
 
     public CreateAdminUserCommandHandler(
@@ -26,12 +28,14 @@ public class CreateAdminUserCommandHandler : IRequestHandler<CreateAdminUserComm
         IRepository<ApplicationUser, int>    userRepository,
         ICurrentUserService                  currentUserService,
         IPasswordHasher                      passwordHasher,
+        IUnitOfWork                          unitOfWork,
         ILogger<CreateAdminUserCommandHandler> logger)
     {
         _partyRepository     = partyRepository;
         _userRepository      = userRepository;
         _currentUserService  = currentUserService;
         _passwordHasher      = passwordHasher;
+        _unitOfWork          = unitOfWork;
         _logger              = logger;
     }
 
@@ -118,17 +122,24 @@ public class CreateAdminUserCommandHandler : IRequestHandler<CreateAdminUserComm
 
         digitalId.Credentials.First().ContactMedia.First().Party = party;
 
-        var (userId, userName, userIdentifier) = Helper.ResolveUserInfo(appUser);
-
         // 4. Kaydet — bu bilinçli olarak token üretmiyor: yeni oluşturulan admin'e
         // otomatik login verilmiyor, kendi credential'larıyla ayrıca login olması gerekiyor.
         await _partyRepository.AddAsync(party, cancellationToken);
+
+        // DÜZELTME (kritik): Helper.ResolveUserInfo(appUser), appUser.Id'yi okuyor.
+        // Önceki halde bu çağrı AddAsync'TEN BİLE ÖNCE yapılıyordu — appUser.Id
+        // garanti 0'dı (int/DB-generated key, SaveChanges'ten önce hiçbir zaman
+        // gerçek değeri almaz). SaveChanges burada manuel tetiklenip appUser.Id
+        // gerçek değerini aldıktan SONRA ResolveUserInfo çağrılıyor.
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+        var (userId, userName, userIdentifier) = Helper.ResolveUserInfo(appUser);
 
         var creatorUserId = _currentUserService.UserId;
 
         _logger.LogInformation(
             "Yeni Site Admin oluşturuldu. UserId: {UserId}, Identifier: {Identifier}, OluşturanUserId: {CreatorId}",
-            appUser.Id, request.Identifier, creatorUserId);
+            userId, request.Identifier, creatorUserId);
 
         return new CreateAdminUserResult
         {

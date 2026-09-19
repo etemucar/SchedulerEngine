@@ -8,7 +8,7 @@ using Scheduler.Dispatch;
 namespace Scheduler.Configuration;
 
 /// <summary>
-/// Scheduler.csproj'un DI/pipeline kurulum noktası. FinYo.Api ve DocDes.Api
+/// Scheduler.csproj'un DI/pipeline kurulum noktası. SchedulerEngine.Api ve DocDes.Api
 /// Program.cs'lerinde BİREBİR aynı şekilde çağrılır.
 /// </summary>
 public static class HangfireConfigurationExtensions

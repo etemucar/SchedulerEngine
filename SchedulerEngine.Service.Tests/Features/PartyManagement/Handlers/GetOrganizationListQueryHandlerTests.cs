@@ -1,28 +1,46 @@
 using Moq;
+using AutoMapper;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using System.Linq.Expressions;
 using SchedulerEngine.Core.Repository;
 using SchedulerEngine.Core.Model;
-using SchedulerEngine.Core.TMFCommon;
 using SchedulerEngine.Service.Features.Queries;
 using SchedulerEngine.Service.Features.Handlers;
+using SchedulerEngine.Service.Dtos.Responses;
 
 namespace SchedulerEngine.Service.Tests.Features.Queries;
 
 public class GetOrganizationListQueryHandlerTests
 {
-    private readonly Mock<IRepository<Organization, int>> _organizationRepositoryMock;
+    private readonly Mock<IRepository<Organization, int>>           _organizationRepositoryMock;
+    private readonly Mock<IMapper>                                  _mapperMock;
     private readonly Mock<ILogger<GetOrganizationListQueryHandler>> _loggerMock;
-    private readonly GetOrganizationListQueryHandler _handler;
+    private readonly GetOrganizationListQueryHandler                _handler;
 
     public GetOrganizationListQueryHandlerTests()
     {
         _organizationRepositoryMock = new Mock<IRepository<Organization, int>>();
+        _mapperMock                 = new Mock<IMapper>();
         _loggerMock                 = new Mock<ILogger<GetOrganizationListQueryHandler>>();
+
+        _mapperMock
+            .Setup(x => x.Map<OrganizationResponse>(It.IsAny<Organization>()))
+            .Returns((Organization o) => new OrganizationResponse
+            {
+                Id        = o.Id,
+                Name      = o.Name,
+                TaxNumber = o.TaxNumber,
+                ValidFor = new TimePeriodResponse
+                {
+                    StartDateTime = o.ValidForStart,
+                    EndDateTime   = o.ValidForEnd
+                }
+            });
 
         _handler = new GetOrganizationListQueryHandler(
             _organizationRepositoryMock.Object,
+            _mapperMock.Object,
             _loggerMock.Object);
     }
 

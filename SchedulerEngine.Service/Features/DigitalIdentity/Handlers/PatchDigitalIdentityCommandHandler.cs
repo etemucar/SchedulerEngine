@@ -1,4 +1,6 @@
+// PatchDigitalIdentityCommandHandler.cs
 using MediatR;
+using AutoMapper;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SchedulerEngine.Core.Repository;
@@ -15,40 +17,42 @@ namespace SchedulerEngine.Service.Features.Handlers;
 public class PatchDigitalIdentityCommandHandler
     : IRequestHandler<PatchDigitalIdentityCommand, DigitalIdentityResponse>
 {
-    private readonly IRepository<DigitalIdentity, Guid>            _digitalIdentityRepository;
-    private readonly IRepository<Credential, Guid>                 _credentialRepository;
-    private readonly IRepository<CredentialCharacteristic, int>    _credentialCharacteristicRepository;
-    private readonly IRepository<ContactMedium, int>               _contactMediumRepository;
-    private readonly IRepository<PartyRole, int>                   _partyRoleRepository;
-    private readonly ICurrentUserService                           _currentUserService;
-    private readonly IPasswordHasher                               _passwordHasher;
-    private readonly ILogger<PatchDigitalIdentityCommandHandler>   _logger;
+    private readonly IRepository<DigitalIdentity, Guid> _digitalIdentityRepository;
+    private readonly IRepository<Credential, Guid> _credentialRepository;
+    private readonly IRepository<CredentialCharacteristic, int> _credentialCharacteristicRepository;
+    private readonly IRepository<ContactMedium, int> _contactMediumRepository;
+    private readonly IRepository<PartyRole, int> _partyRoleRepository;
+    private readonly ICurrentUserService _currentUserService;
+    private readonly IPasswordHasher _passwordHasher;
+    private readonly IMapper _mapper;
+    private readonly ILogger<PatchDigitalIdentityCommandHandler> _logger;
 
     public PatchDigitalIdentityCommandHandler(
-        IRepository<DigitalIdentity, Guid>             digitalIdentityRepository,
-        IRepository<Credential, Guid>                  credentialRepository,
-        IRepository<CredentialCharacteristic, int>     credentialCharacteristicRepository,
-        IRepository<ContactMedium, int>                contactMediumRepository,
-        IRepository<PartyRole, int>                    partyRoleRepository,
-        ICurrentUserService                            currentUserService,
-        IPasswordHasher                                passwordHasher,
-        ILogger<PatchDigitalIdentityCommandHandler>    logger)
+        IRepository<DigitalIdentity, Guid> digitalIdentityRepository,
+        IRepository<Credential, Guid> credentialRepository,
+        IRepository<CredentialCharacteristic, int> credentialCharacteristicRepository,
+        IRepository<ContactMedium, int> contactMediumRepository,
+        IRepository<PartyRole, int> partyRoleRepository,
+        ICurrentUserService currentUserService,
+        IPasswordHasher passwordHasher,
+        IMapper mapper,
+        ILogger<PatchDigitalIdentityCommandHandler> logger)
     {
-        _digitalIdentityRepository          = digitalIdentityRepository;
-        _credentialRepository               = credentialRepository;
+        _digitalIdentityRepository = digitalIdentityRepository;
+        _credentialRepository = credentialRepository;
         _credentialCharacteristicRepository = credentialCharacteristicRepository;
-        _contactMediumRepository            = contactMediumRepository;
-        _partyRoleRepository                = partyRoleRepository;
-        _currentUserService                 = currentUserService;
-        _passwordHasher                     = passwordHasher;
-        _logger                             = logger;
+        _contactMediumRepository = contactMediumRepository;
+        _partyRoleRepository = partyRoleRepository;
+        _currentUserService = currentUserService;
+        _passwordHasher = passwordHasher;
+        _mapper = mapper;
+        _logger = logger;
     }
 
     public async Task<DigitalIdentityResponse> Handle(
         PatchDigitalIdentityCommand request,
         CancellationToken cancellationToken)
     {
-        // PartyRole dahil — yeni/güncellenen ContactMedium'lar için PartyId lazım
         var digitalIdentity = await _digitalIdentityRepository.FindOneAsync(
             d => d.Id == request.DigitalIdentityId,
             i => i.Include(d => d.PartyRole)
@@ -60,7 +64,6 @@ public class PatchDigitalIdentityCommandHandler
         if (digitalIdentity is null)
             throw new NotFoundException($"DigitalIdentity bulunamadı. Id: {request.DigitalIdentityId}");
 
-        // 0. Yetki kontrolü — kendi kaydı ya da SITE_ADMIN
         var actingPartyRoleId = await _currentUserService.GetPartyRoleIdAsync(cancellationToken);
 
         if (digitalIdentity.PartyRoleId != actingPartyRoleId)
@@ -74,10 +77,8 @@ public class PatchDigitalIdentityCommandHandler
                 throw new UnauthorizedException("Bu kaydı düzenleme yetkiniz yok.");
         }
 
-        // 1. Nickname — her zaman uygulanır (null gelirse null'a çevrilir)
         digitalIdentity.Nickname = request.Nickname;
 
-        // 2. Credential senkronizasyonu (sadece gönderildiyse)
         if (request.Credentials is not null)
         {
             var incomingIds = request.Credentials
@@ -85,7 +86,6 @@ public class PatchDigitalIdentityCommandHandler
                 .Select(c => c.Id!.Value)
                 .ToHashSet();
 
-            // 2a. Listede olmayan mevcut credential'ları sil
             var toRemove = digitalIdentity.Credentials
                 .Where(c => !incomingIds.Contains(c.Id))
                 .ToList();
@@ -99,13 +99,12 @@ public class PatchDigitalIdentityCommandHandler
                 digitalIdentity.Credentials.Remove(credential);
             }
 
-            // 2b. Id'si eşleşen credential'ları güncelle (characteristics/contactMedia tam replace)
             foreach (var incoming in request.Credentials.Where(c => c.Id.HasValue))
             {
                 var existing = digitalIdentity.Credentials.First(c => c.Id == incoming.Id!.Value);
 
                 existing.CredentialType = incoming.CredentialType;
-                existing.TrustLevel     = incoming.TrustLevel;
+                existing.TrustLevel = incoming.TrustLevel;
 
                 foreach (var ch in existing.Characteristics.ToList())
                     await _credentialCharacteristicRepository.RemoveAsync(ch, cancellationToken);
@@ -122,16 +121,15 @@ public class PatchDigitalIdentityCommandHandler
                 await _credentialRepository.UpdateAsync(existing, cancellationToken);
             }
 
-            // 2c. Id'si null olan credential'ları yeni olarak ekle
             foreach (var incoming in request.Credentials.Where(c => !c.Id.HasValue))
             {
                 var newCredential = new Credential
                 {
-                    CredentialType    = incoming.CredentialType,
-                    TrustLevel        = incoming.TrustLevel,
+                    CredentialType = incoming.CredentialType,
+                    TrustLevel = incoming.TrustLevel,
                     DigitalIdentityId = digitalIdentity.Id,
-                    Characteristics   = incoming.Characteristics.Select(MapCharacteristic).ToList(),
-                    ContactMedia      = incoming.ContactMedia
+                    Characteristics = incoming.Characteristics.Select(MapCharacteristic).ToList(),
+                    ContactMedia = incoming.ContactMedia
                         .Select(cm => MapContactMedium(cm, digitalIdentity.PartyRole.PartyId))
                         .ToList()
                 };
@@ -147,32 +145,21 @@ public class PatchDigitalIdentityCommandHandler
             "DigitalIdentity patch edildi. Id: {Id}, CredentialSync: {Sync}, İşlemYapan: {ActingRoleId}",
             digitalIdentity.Id, request.Credentials is not null, actingPartyRoleId);
 
-        return MapToResponse(digitalIdentity);
+        return _mapper.Map<DigitalIdentityResponse>(digitalIdentity);
     }
 
     private CredentialCharacteristic MapCharacteristic(CredentialCharacteristicRequest ch) => new()
     {
-        Name = ch.Name switch
-        {
-            "password" => "passwordHash",
-            "apiKey"   => "apiKeyHash",
-            _          => ch.Name
-        },
-        Value = ch.Name switch
-        {
-            "password" => _passwordHasher.Hash(ch.Value),
-            "apiKey"   => _passwordHasher.Hash(ch.Value),
-            _          => ch.Value
-        }
+        Name = ch.Name == "password" ? "passwordHash" : ch.Name,
+        Value = ch.Name == "password" ? _passwordHasher.Hash(ch.Value) : ch.Value
     };
 
     private static ContactMedium MapContactMedium(ContactMediumRequest cm, int partyId)
     {
         var mediumType = Enum.Parse<SchedulerEngine.Core.Enums.ContactMediumType>(cm.MediumType, ignoreCase: true);
 
-        string? email       = null;
+        string? email = null;
         string? phoneNumber = null;
-        string? url         = null;
 
         switch (mediumType)
         {
@@ -182,28 +169,15 @@ public class PatchDigitalIdentityCommandHandler
             case SchedulerEngine.Core.Enums.ContactMediumType.PhoneNumber:
                 phoneNumber = cm.Characteristic.GetValueOrDefault("phoneNumber")?.ToString();
                 break;
-            case SchedulerEngine.Core.Enums.ContactMediumType.Url:
-                url = cm.Characteristic.GetValueOrDefault("url")?.ToString();
-                break;
         }
 
         return new ContactMedium
         {
-            PartyId     = partyId,
-            MediumType  = mediumType,
+            PartyId = partyId,
+            MediumType = mediumType,
             IsPreferred = cm.Preferred,
-            Email       = email,
-            PhoneNumber = phoneNumber,
-            Url         = url
+            Email = email,
+            PhoneNumber = phoneNumber
         };
     }
-
-    private static DigitalIdentityResponse MapToResponse(DigitalIdentity d) => new()
-    {
-        Id                  = d.Id,
-        Nickname            = d.Nickname,
-        Status              = d.Status,
-        DigitalIdentityDate = d.DigitalIdentityDate,
-        PartyRoleId         = d.PartyRoleId
-    };
 }

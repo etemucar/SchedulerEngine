@@ -1,5 +1,7 @@
 using MediatR;
+using AutoMapper;
 using Microsoft.Extensions.Logging;
+using SchedulerEngine.Core.Data;
 using SchedulerEngine.Service.Dtos.Responses;
 using SchedulerEngine.Service.Features.Commands;
 using SchedulerEngine.Core.Repository;
@@ -8,67 +10,57 @@ using SchedulerEngine.Core.TMFCommon;
 
 namespace SchedulerEngine.Service.Features.Handlers;
 
+// NOT: Bu dosya, tekrar yüklenmedi ama CreateIndividualCommandHandler ile
+// BİREBİR AYNI bug'ı taşıyordu (organization.PartyId = party.Id, SaveChanges'ten
+// önce okunuyordu). Tutarlılık için aynı düzeltme burada da uygulandı.
 public class CreateOrganizationCommandHandler : IRequestHandler<CreateOrganizationCommand, OrganizationResponse>
 {
-    private readonly IRepository<Party, int>                          _partyRepository;
-    private readonly IRepository<Organization, int>                   _organizationRepository;
-    private readonly ILogger<CreateOrganizationCommandHandler>        _logger;
+    private readonly IRepository<Party, int> _partyRepository;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IMapper _mapper;
+    private readonly ILogger<CreateOrganizationCommandHandler> _logger;
 
     public CreateOrganizationCommandHandler(
-        IRepository<Party, int>                    partyRepository,
-        IRepository<Organization, int>             organizationRepository,
-        ILogger<CreateOrganizationCommandHandler>  logger)
+        IRepository<Party, int> partyRepository,
+        IUnitOfWork unitOfWork,
+        IMapper mapper,
+        ILogger<CreateOrganizationCommandHandler> logger)
     {
-        _partyRepository        = partyRepository;
-        _organizationRepository = organizationRepository;
-        _logger                 = logger;
+        _partyRepository = partyRepository;
+        _unitOfWork = unitOfWork;
+        _mapper = mapper;
+        _logger = logger;
     }
 
     public async Task<OrganizationResponse> Handle(CreateOrganizationCommand request, CancellationToken cancellationToken)
     {
-        // 1. Party oluştur (abstract container)
-        var party = new Party();
-        await _partyRepository.AddAsync(party, cancellationToken);
-
-        // 2. Organization oluştur
         var organization = new Organization
         {
-            PartyId             = party.Id,
-            Name                = request.Name,
-            TaxOffice           = request.TaxOffice,
-            TaxNumber           = request.TaxNumber,
-            IdentityNumber      = request.IdentityNumber,
-            TradeName           = request.TradeName,
+            Name = request.Name,
+            TaxOffice = request.TaxOffice,
+            TaxNumber = request.TaxNumber,
+            IdentityNumber = request.IdentityNumber,
+            TradeName = request.TradeName,
             TradeRegisterNumber = request.TradeRegisterNumber,
-            MersisNo            = request.MersisNo,
-            // null gelirse Min/Max ile aç — kural 4
-            ValidForStart       = request.ValidForStart ?? DateTime.MinValue,
-            ValidForEnd         = request.ValidForEnd   ?? DateTime.MaxValue,
+            MersisNo = request.MersisNo,
+            ValidForStart = request.ValidForStart ?? DateTime.MinValue,
+            ValidForEnd = request.ValidForEnd ?? DateTime.MaxValue,
         };
 
-        await _organizationRepository.AddAsync(organization, cancellationToken);
+        // FK artık navigation property ile kuruluyor (bkz. CreateIndividualCommandHandler'daki
+        // aynı gerekçe) — elle .Id okuma yok.
+        var party = new Party
+        {
+            Organization = organization
+        };
+
+        await _partyRepository.AddAsync(party, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
 
         _logger.LogInformation(
             "Organization oluşturuldu. PartyId: {PartyId}, OrganizationId: {OrganizationId}",
             party.Id, organization.Id);
 
-        return MapToResponse(organization);
+        return _mapper.Map<OrganizationResponse>(organization);
     }
-
-    private static OrganizationResponse MapToResponse(Organization organization) => new()
-    {
-        Id                  = organization.Id,
-        Name                = organization.Name,
-        TaxOffice           = organization.TaxOffice,
-        TaxNumber           = organization.TaxNumber,
-        IdentityNumber      = organization.IdentityNumber,
-        TradeName           = organization.TradeName,
-        TradeRegisterNumber = organization.TradeRegisterNumber,
-        MersisNo            = organization.MersisNo,
-        ValidFor = new TimePeriodResponse
-        {
-            StartDateTime = organization.ValidForStart,
-            EndDateTime   = organization.ValidForEnd
-        }
-    };
 }

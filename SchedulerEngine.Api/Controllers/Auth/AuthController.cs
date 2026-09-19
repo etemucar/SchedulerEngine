@@ -185,7 +185,7 @@ public class AuthController : ControllerBase
     /// <summary>
     /// Organization kaydeder (Party + Organization + PartyRole + DigitalIdentity
     /// + Credentials). PartyRoleTypeId = ExternalService ise ApplicationUser
-    /// oluşturulmaz (FinYo/DocDes gibi sadece ApiKey ile çalışan servisler);
+    /// oluşturulmaz (SchedulerEngine/DocDes gibi sadece ApiKey ile çalışan servisler);
     /// başka rol tipinde ApplicationUser da oluşturulur (insan login edebilir).
     /// Sadece SiteAdmin çağırabilir.
     /// </summary>

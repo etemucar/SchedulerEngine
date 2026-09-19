@@ -8,8 +8,8 @@ using SchedulerEngine.Core.Repository;
 namespace SchedulerEngine.Infrastructure.Repositories;
 
 /// <summary>
-/// T�m entity'ler i�in ortak CRUD + Include + ThenInclude + Asenkron operasyonlari
-/// EF Core bagimliligi sadece burada � Core tamamen temiz kalir
+/// Tüm entity'ler için ortak CRUD + Include + ThenInclude + Asenkron operasyonları
+/// EF Core bağımlılığı sadece burada – Core tamamen temiz kalır
 /// </summary>
 public class Repository<T, TKey> : IRepository<T, TKey> where T : ModelBase<TKey>
 {
@@ -24,7 +24,7 @@ public class Repository<T, TKey> : IRepository<T, TKey> where T : ModelBase<TKey
         _logger = logger;
     }
 
-    // -- Create ------------------------------------------------------------
+    // ── Create ────────────────────────────────────────────────────────────
 
     public virtual void Add(T entity)
         => _context.Set<T>().Add(entity);
@@ -38,7 +38,7 @@ public class Repository<T, TKey> : IRepository<T, TKey> where T : ModelBase<TKey
     public virtual async Task AddRangeAsync(IEnumerable<T> entities, CancellationToken ct = default)
         => await _context.Set<T>().AddRangeAsync(entities, ct);
 
-    // -- Update ------------------------------------------------------------
+    // ── Update ────────────────────────────────────────────────────────────
 
     public virtual void Update(T entity)
         => _context.Set<T>().Update(entity);
@@ -49,7 +49,16 @@ public class Repository<T, TKey> : IRepository<T, TKey> where T : ModelBase<TKey
         return Task.CompletedTask;
     }
 
-    // -- Delete ------------------------------------------------------------
+    public virtual void UpdateRange(IEnumerable<T> entities)
+        => _context.Set<T>().UpdateRange(entities);
+
+    public virtual Task UpdateRangeAsync(IEnumerable<T> entities, CancellationToken ct = default)
+    {
+        _context.Set<T>().UpdateRange(entities);
+        return Task.CompletedTask;
+    }
+
+    // ── Delete ────────────────────────────────────────────────────────────
 
     public virtual void Remove(T entity)
         => _context.Set<T>().Remove(entity);
@@ -69,19 +78,19 @@ public class Repository<T, TKey> : IRepository<T, TKey> where T : ModelBase<TKey
         return Task.CompletedTask;
     }
 
-    // -- Get by Id ---------------------------------------------------------
+    // ── Get by Id ─────────────────────────────────────────────────────────
 
     public virtual async Task<T?> GetByIdAsync(TKey id, CancellationToken ct = default)
         => await _context.Set<T>().FindAsync([id], ct);
 
-    // -- Exists ------------------------------------------------------------
+    // ── Exists ────────────────────────────────────────────────────────────
 
     public async Task<bool> AnyAsync(
         Expression<Func<T, bool>> predicate,
         CancellationToken ct = default)
         => await _context.Set<T>().AnyAsync(predicate, ct);
 
-    // -- Count -------------------------------------------------------------
+    // ── Count ─────────────────────────────────────────────────────────────
 
     public virtual int Count()
         => _context.Set<T>().Count();
@@ -97,7 +106,36 @@ public class Repository<T, TKey> : IRepository<T, TKey> where T : ModelBase<TKey
         CancellationToken ct = default)
         => await _context.Set<T>().CountAsync(predicate, ct);
 
-    // -- Find (sync) -------------------------------------------------------
+    // ── Count By Group ────────────────────────────────────────────────────
+
+    public virtual IReadOnlyDictionary<TGroupKey, int> CountByGroup<TGroupKey>(
+        Expression<Func<T, bool>> predicate,
+        Expression<Func<T, TGroupKey>> groupSelector) where TGroupKey : notnull
+    {
+        return _context.Set<T>()
+            .AsNoTracking()
+            .Where(predicate)
+            .GroupBy(groupSelector)
+            .Select(g => new { Key = g.Key, Count = g.Count() })
+            .ToDictionary(x => x.Key, x => x.Count);
+    }
+
+    public virtual async Task<IReadOnlyDictionary<TGroupKey, int>> CountByGroupAsync<TGroupKey>(
+        Expression<Func<T, bool>> predicate,
+        Expression<Func<T, TGroupKey>> groupSelector,
+        CancellationToken ct = default) where TGroupKey : notnull
+    {
+        var result = await _context.Set<T>()
+            .AsNoTracking()
+            .Where(predicate)
+            .GroupBy(groupSelector)
+            .Select(g => new { Key = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        return result.ToDictionary(x => x.Key, x => x.Count);
+    }
+
+    // ── Find (sync) ───────────────────────────────────────────────────────
 
     public virtual IReadOnlyList<T> Find(
         Expression<Func<T, bool>> predicate,
@@ -120,7 +158,7 @@ public class Repository<T, TKey> : IRepository<T, TKey> where T : ModelBase<TKey
         return query.Select(selector).ToList();
     }
 
-    // -- Find (async) ------------------------------------------------------
+    // ── Find (async) ──────────────────────────────────────────────────────
 
     public virtual async Task<IReadOnlyList<T>> FindAsync(
         Expression<Func<T, bool>> predicate,
@@ -145,7 +183,7 @@ public class Repository<T, TKey> : IRepository<T, TKey> where T : ModelBase<TKey
         return await query.Select(selector).ToListAsync(ct);
     }
 
-    // -- Find Paged (async) ------------------------------------------------
+    // ── Find Paged (async) ────────────────────────────────────────────────
 
     public virtual async Task<IReadOnlyList<T>> FindPagedAsync(
         Expression<Func<T, bool>> predicate,
@@ -162,7 +200,7 @@ public class Repository<T, TKey> : IRepository<T, TKey> where T : ModelBase<TKey
             .ToListAsync(ct);
     }
 
-    // -- Find Offset (async) ----------------------------------------------
+    // ── Find Offset (async) ──────────────────────────────────────────────
 
     public virtual async Task<IReadOnlyList<T>> FindOffsetAsync(
         Expression<Func<T, bool>> predicate,
@@ -172,7 +210,7 @@ public class Repository<T, TKey> : IRepository<T, TKey> where T : ModelBase<TKey
         Func<IQueryable<T>, IQueryable<T>>? include = null,
         CancellationToken ct = default)
     {
-        // Guard: negatif/sifir degerler sessizce yanlis Skip/Take �retmesin.
+        // Guard: negatif/sıfır değerler sessizce yanlış Skip/Take üretmesin.
         if (offset < 0) offset = 0;
         if (limit <= 0) limit = 20;
 
@@ -192,14 +230,14 @@ public class Repository<T, TKey> : IRepository<T, TKey> where T : ModelBase<TKey
         Func<IQueryable<T>, IOrderedQueryable<T>>? orderBy = null,
         CancellationToken ct = default)
     {
-        // Guard: negatif/sifir degerler sessizce yanlis Skip/Take �retmesin
-        // (FindOffsetAsync ile ayni kural).
+        // Guard: negatif/sıfır değerler sessizce yanlış Skip/Take üretmesin
+        // (FindOffsetAsync ile aynı kural).
         if (offset < 0) offset = 0;
         if (limit <= 0) limit = 20;
 
-        // include YOK: Select(selector) navigation erisimini kendi basina
-        // JOIN'e �evirir; ayri bir Include gereksiz ve hatta bu metodun
-        // amacina (sadece gerekli kolonlari �ekmek) aykiri olurdu.
+        // include YOK: Select(selector) navigation erişimini kendi başına
+        // JOIN'e çevirir; ayrı bir Include gereksiz ve hatta bu metodun
+        // amacına (sadece gerekli kolonları çekmek) aykırı olurdu.
         var query = ApplyQueryOptions(_context.Set<T>().AsQueryable(), predicate, orderBy, include: null, asNoTracking: true);
 
         return await query
@@ -209,7 +247,7 @@ public class Repository<T, TKey> : IRepository<T, TKey> where T : ModelBase<TKey
             .ToListAsync(ct);
     }
 
-    // -- Find After / Keyset (async) --------------------------------------
+    // ── Find After / Keyset (async) ──────────────────────────────────────
 
     public virtual async Task<IReadOnlyList<T>> FindAfterAsync<TCursor>(
         Expression<Func<T, bool>> predicate,
@@ -228,7 +266,7 @@ public class Repository<T, TKey> : IRepository<T, TKey> where T : ModelBase<TKey
 
         if (after.HasValue)
         {
-            // WHERE {keySelector} > {after} � Skip yok, index seek.
+            // WHERE {keySelector} > {after} — Skip yok, index seek.
             var param       = keySelector.Parameters[0];
             var keyBody     = keySelector.Body;
             var afterConst  = Expression.Constant(after.Value, typeof(TCursor));
@@ -238,8 +276,8 @@ public class Repository<T, TKey> : IRepository<T, TKey> where T : ModelBase<TKey
             query = query.Where(whereLambda);
         }
 
-        // Siralama HER ZAMAN keySelector ile ayni kolon �zerinden olmali � aksi
-        // halde d�nd�r�len son kaydin cursor'i bir sonraki �agri i�in anlamsizlasir.
+        // Sıralama HER ZAMAN keySelector ile aynı kolon üzerinden olmalı — aksi
+        // halde döndürülen son kaydın cursor'ı bir sonraki çağrı için anlamsızlaşır.
         query = query.OrderBy(keySelector);
 
         return await query.Take(limit).ToListAsync(ct);
@@ -256,13 +294,13 @@ public class Repository<T, TKey> : IRepository<T, TKey> where T : ModelBase<TKey
     {
         if (limit <= 0) limit = 1000;
 
-        // include YOK � FindOffsetSelectAsync'teki ayni gerek�e.
+        // include YOK — FindOffsetSelectAsync'teki aynı gerekçe.
         IQueryable<T> query = _context.Set<T>().AsNoTracking().Where(predicate);
 
         if (after.HasValue)
         {
-            // WHERE {keySelector} > {after} � Skip yok, index seek.
-            // (FindAfterAsync ile birebir ayni expression kurulumu.)
+            // WHERE {keySelector} > {after} — Skip yok, index seek.
+            // (FindAfterAsync ile birebir aynı expression kurulumu.)
             var param       = keySelector.Parameters[0];
             var keyBody     = keySelector.Body;
             var afterConst  = Expression.Constant(after.Value, typeof(TCursor));
@@ -272,15 +310,15 @@ public class Repository<T, TKey> : IRepository<T, TKey> where T : ModelBase<TKey
             query = query.Where(whereLambda);
         }
 
-        // Siralama HER ZAMAN keySelector ile ayni kolon �zerinden olmali �
-        // aksi halde d�nd�r�len son kaydin cursor'i bir sonraki �agri i�in
-        // anlamsizlasir (FindAfterAsync ile ayni kural).
+        // Sıralama HER ZAMAN keySelector ile aynı kolon üzerinden olmalı —
+        // aksi halde döndürülen son kaydın cursor'ı bir sonraki çağrı için
+        // anlamsızlaşır (FindAfterAsync ile aynı kural).
         query = query.OrderBy(keySelector);
 
         return await query.Take(limit).Select(selector).ToListAsync(ct);
     }
 
-    // -- FindOne (sync) ----------------------------------------------------
+    // ── FindOne (sync) ────────────────────────────────────────────────────
 
     public virtual T? FindOne(
         Expression<Func<T, bool>> predicate,
@@ -301,7 +339,7 @@ public class Repository<T, TKey> : IRepository<T, TKey> where T : ModelBase<TKey
         return query.Select(selector).FirstOrDefault();
     }
 
-    // -- FindOne (async) ---------------------------------------------------
+    // ── FindOne (async) ───────────────────────────────────────────────────
 
     public virtual async Task<T?> FindOneAsync(
         Expression<Func<T, bool>> predicate,
@@ -324,7 +362,7 @@ public class Repository<T, TKey> : IRepository<T, TKey> where T : ModelBase<TKey
         return await query.Select(selector).FirstOrDefaultAsync(ct);
     }
 
-    // -- Yardimci Metod ----------------------------------------------------
+    // ── Yardımcı Metod ────────────────────────────────────────────────────
 
     private IQueryable<T> ApplyQueryOptions(
         IQueryable<T> query,

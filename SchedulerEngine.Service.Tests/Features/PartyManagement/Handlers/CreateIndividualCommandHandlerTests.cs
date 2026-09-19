@@ -1,30 +1,71 @@
 using Moq;
+using AutoMapper;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
+using SchedulerEngine.Core.Data;
 using SchedulerEngine.Core.Repository;
 using SchedulerEngine.Core.Model;
 using SchedulerEngine.Service.Features.Commands;
 using SchedulerEngine.Service.Features.Handlers;
-using SchedulerEngine.Service.Dtos.Requests;
+using SchedulerEngine.Service.Dtos.Responses;
 
 namespace SchedulerEngine.Service.Tests.Features.Handlers;
 
 public class CreateIndividualCommandHandlerTests
 {
-    private readonly Mock<IRepository<Party, int>>                   _partyRepositoryMock;
-    private readonly Mock<IRepository<Individual, int>>              _individualRepositoryMock;
-    private readonly Mock<ILogger<CreateIndividualCommandHandler>>   _loggerMock;
-    private readonly CreateIndividualCommandHandler                  _handler;
+    private readonly Mock<IRepository<Party, int>>                 _partyRepositoryMock;
+    private readonly Mock<IUnitOfWork>                             _unitOfWorkMock;
+    private readonly Mock<IMapper>                                 _mapperMock;
+    private readonly Mock<ILogger<CreateIndividualCommandHandler>> _loggerMock;
+    private readonly CreateIndividualCommandHandler                _handler;
 
     public CreateIndividualCommandHandlerTests()
     {
-        _partyRepositoryMock      = new Mock<IRepository<Party, int>>();
-        _individualRepositoryMock = new Mock<IRepository<Individual, int>>();
-        _loggerMock               = new Mock<ILogger<CreateIndividualCommandHandler>>();
+        _partyRepositoryMock = new Mock<IRepository<Party, int>>();
+        _unitOfWorkMock      = new Mock<IUnitOfWork>();
+        _mapperMock          = new Mock<IMapper>();
+        _loggerMock          = new Mock<ILogger<CreateIndividualCommandHandler>>();
+
+        _partyRepositoryMock
+            .Setup(x => x.AddAsync(It.IsAny<Party>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        // DÜZELTME: handler artık IUnitOfWork alıyor — party.Id SaveChanges'ten
+        // önce okunursa her zaman 0 dönüyordu (Individual.PartyId FK'sine elle
+        // atanıyordu). Artık FK, navigation property (party.Individual = individual)
+        // ile kuruluyor ve IRepository<Individual,int> handler'dan tamamen kaldırıldı.
+        _unitOfWorkMock
+            .Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+
+        // Gerçek mapping'i taklit ediyoruz — testlerin assert kısımları
+        // result.GivenName/FamilyName/... alanlarına doğrudan bakıyor.
+        _mapperMock
+            .Setup(x => x.Map<IndividualResponse>(It.IsAny<Individual>()))
+            .Returns((Individual i) => new IndividualResponse
+            {
+                Id             = i.Id,
+                GivenName      = i.GivenName,
+                FamilyName     = i.FamilyName,
+                MiddleName     = i.MiddleName,
+                Title          = i.Title,
+                Gender         = i.Gender,
+                Nationality    = i.Nationality,
+                BirthDate      = i.BirthDate,
+                PlaceOfBirth   = i.PlaceOfBirth,
+                CountryOfBirth = i.CountryOfBirth,
+                MaritalStatus  = i.MaritalStatus,
+                ValidFor = new TimePeriodResponse
+                {
+                    StartDateTime = i.ValidForStart,
+                    EndDateTime   = i.ValidForEnd
+                }
+            });
 
         _handler = new CreateIndividualCommandHandler(
             _partyRepositoryMock.Object,
-            _individualRepositoryMock.Object,
+            _unitOfWorkMock.Object,
+            _mapperMock.Object,
             _loggerMock.Object);
     }
 
@@ -40,22 +81,11 @@ public class CreateIndividualCommandHandlerTests
             BirthDate  = new DateTime(1990, 1, 1)
         };
 
-        _partyRepositoryMock
-            .Setup(x => x.AddAsync(It.IsAny<Party>(), It.IsAny<CancellationToken>()))
-            .Callback<Party, CancellationToken>((party, _) => party.Id = 1)
-            .Returns(Task.CompletedTask);
-
-        _individualRepositoryMock
-            .Setup(x => x.AddAsync(It.IsAny<Individual>(), It.IsAny<CancellationToken>()))
-            .Callback<Individual, CancellationToken>((individual, _) => individual.Id = 10)
-            .Returns(Task.CompletedTask);
-
         // Act
         var result = await _handler.Handle(command, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().NotBeNull();
-        result.Id.Should().Be(10);
         result.GivenName.Should().Be(command.GivenName);
         result.FamilyName.Should().Be(command.FamilyName);
         result.Gender.Should().Be(command.Gender);
@@ -66,19 +96,7 @@ public class CreateIndividualCommandHandlerTests
     public async Task Handle_ValidCommand_ShouldCallPartyRepositoryOnce()
     {
         // Arrange
-        var command = new CreateIndividualCommand
-        {
-            GivenName  = "Ahmet",
-            FamilyName = "Yılmaz"
-        };
-
-        _partyRepositoryMock
-            .Setup(x => x.AddAsync(It.IsAny<Party>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
-        _individualRepositoryMock
-            .Setup(x => x.AddAsync(It.IsAny<Individual>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+        var command = new CreateIndividualCommand { GivenName = "Ahmet", FamilyName = "Yılmaz" };
 
         // Act
         await _handler.Handle(command, TestContext.Current.CancellationToken);
@@ -90,32 +108,45 @@ public class CreateIndividualCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_ValidCommand_ShouldCreateIndividualWithCorrectPartyId()
+    public async Task Handle_ValidCommand_ShouldLinkIndividualToPartyViaNavigation()
     {
-        // Arrange
-        var command = new CreateIndividualCommand
-        {
-            GivenName  = "Ahmet",
-            FamilyName = "Yılmaz"
-        };
+        // DEĞİŞTİ: eskiden "individual.PartyId doğru mu" test ediliyordu (elle FK
+        // ataması). Artık FK, navigation property üzerinden kuruluyor ve gerçek
+        // .PartyId değeri ancak DB'de SaveChanges gerçekleştiğinde (mock'ta
+        // simüle edilmiyor) EF tarafından set edilir. Bu yüzden artık test
+        // edilebilir/anlamlı olan şey "navigation doğru kuruldu mu"dur.
+        var command = new CreateIndividualCommand { GivenName = "Ahmet", FamilyName = "Yılmaz" };
 
+        Party? capturedParty = null;
         _partyRepositoryMock
             .Setup(x => x.AddAsync(It.IsAny<Party>(), It.IsAny<CancellationToken>()))
-            .Callback<Party, CancellationToken>((party, _) => party.Id = 42)
-            .Returns(Task.CompletedTask);
-
-        Individual capturedIndividual = null!;
-        _individualRepositoryMock
-            .Setup(x => x.AddAsync(It.IsAny<Individual>(), It.IsAny<CancellationToken>()))
-            .Callback<Individual, CancellationToken>((individual, _) => capturedIndividual = individual)
+            .Callback<Party, CancellationToken>((party, _) => capturedParty = party)
             .Returns(Task.CompletedTask);
 
         // Act
         await _handler.Handle(command, TestContext.Current.CancellationToken);
 
         // Assert
-        capturedIndividual.Should().NotBeNull();
-        capturedIndividual.PartyId.Should().Be(42);
+        capturedParty.Should().NotBeNull();
+        capturedParty!.Individual.Should().NotBeNull();
+        capturedParty.Individual!.GivenName.Should().Be("Ahmet");
+        capturedParty.Individual.FamilyName.Should().Be("Yılmaz");
+    }
+
+    [Fact]
+    public async Task Handle_ValidCommand_ShouldSaveChangesAfterAddingParty()
+    {
+        // YENİ TEST: appUser/individual.Id'nin SaveChanges'ten önce okunması
+        // bug'ının düzeltildiğini doğrulayan regresyon testi.
+        var command = new CreateIndividualCommand { GivenName = "Ahmet", FamilyName = "Yılmaz" };
+
+        // Act
+        await _handler.Handle(command, TestContext.Current.CancellationToken);
+
+        // Assert
+        _unitOfWorkMock.Verify(
+            x => x.SaveChangesAsync(It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -130,24 +161,18 @@ public class CreateIndividualCommandHandlerTests
             ValidForEnd   = null
         };
 
+        Party? capturedParty = null;
         _partyRepositoryMock
             .Setup(x => x.AddAsync(It.IsAny<Party>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
-        Individual capturedIndividual = null!;
-        _individualRepositoryMock
-            .Setup(x => x.AddAsync(It.IsAny<Individual>(), It.IsAny<CancellationToken>()))
-            .Callback<Individual, CancellationToken>((individual, _) => capturedIndividual = individual)
+            .Callback<Party, CancellationToken>((party, _) => capturedParty = party)
             .Returns(Task.CompletedTask);
 
         // Act
         await _handler.Handle(command, TestContext.Current.CancellationToken);
 
-        // Assert — DateTime? null değil, DateTime.MinValue/MaxValue olmalı
-        capturedIndividual.ValidForStart.Should().NotBeNull();
-        capturedIndividual.ValidForStart.Should().Be(DateTime.MinValue);
-        capturedIndividual.ValidForEnd.Should().NotBeNull();
-        capturedIndividual.ValidForEnd.Should().Be(DateTime.MaxValue);
+        // Assert
+        capturedParty!.Individual!.ValidForStart.Should().Be(DateTime.MinValue);
+        capturedParty.Individual.ValidForEnd.Should().Be(DateTime.MaxValue);
     }
 
     [Fact]
@@ -165,21 +190,17 @@ public class CreateIndividualCommandHandlerTests
             ValidForEnd   = endDate
         };
 
+        Party? capturedParty = null;
         _partyRepositoryMock
             .Setup(x => x.AddAsync(It.IsAny<Party>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-
-        Individual capturedIndividual = null!;
-        _individualRepositoryMock
-            .Setup(x => x.AddAsync(It.IsAny<Individual>(), It.IsAny<CancellationToken>()))
-            .Callback<Individual, CancellationToken>((individual, _) => capturedIndividual = individual)
+            .Callback<Party, CancellationToken>((party, _) => capturedParty = party)
             .Returns(Task.CompletedTask);
 
         // Act
         await _handler.Handle(command, TestContext.Current.CancellationToken);
 
         // Assert
-        capturedIndividual.ValidForStart.Should().Be(startDate);
-        capturedIndividual.ValidForEnd.Should().Be(endDate);
+        capturedParty!.Individual!.ValidForStart.Should().Be(startDate);
+        capturedParty.Individual.ValidForEnd.Should().Be(endDate);
     }
 }

@@ -89,7 +89,7 @@ public class RegisterOrganizationCommandHandler
 
             // OutboundApiKey tipi ama caller kendi anahtarını vermediyse: sunucu
             // üretir VE şifreleyip saklar - ham değer sadece bu response'ta görünür,
-            // bu değeri FinYo/DocDes'in KENDİ sistemine onların tanımlaması gerekir
+            // bu değeri SchedulerEngine/DocDes'in KENDİ sistemine onların tanımlaması gerekir
             // (biz onlara giderken bu anahtarı sunacağız, onlar da bunu bekleyecek).
             if (cr.CredentialType == CredentialType.OutboundApiKey && !cr.Characteristics.Any(c => c.Name == "outboundApiKey"))
             {

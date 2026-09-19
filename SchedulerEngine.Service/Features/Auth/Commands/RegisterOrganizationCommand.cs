@@ -11,7 +11,7 @@ namespace SchedulerEngine.Service.Features.Commands;
 /// deseniyle - RegisterCommand'a dokunulmadı, tamamen izole).
 ///
 /// PartyRoleTypeId = ExternalService ise ApplicationUser OLUŞTURULMAZ
-/// (FinYo/DocDes gibi, sadece ApiKey ile kimlik doğrulayan servisler).
+/// (SchedulerEngine/DocDes gibi, sadece ApiKey ile kimlik doğrulayan servisler).
 /// Başka her PartyRoleTypeId için ApplicationUser oluşturulur (insan login
 /// edebilir) - bu durumda LanguageId zorunludur.
 /// </summary>

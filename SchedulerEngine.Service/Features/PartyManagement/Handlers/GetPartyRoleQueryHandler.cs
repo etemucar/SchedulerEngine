@@ -1,5 +1,7 @@
 using MediatR;
+using AutoMapper;
 using Microsoft.Extensions.Logging;
+using SchedulerEngine.Core.Exceptions;
 using SchedulerEngine.Service.Dtos.Responses;
 using SchedulerEngine.Service.Features.Queries;
 using SchedulerEngine.Core.Repository;
@@ -10,14 +12,17 @@ namespace SchedulerEngine.Service.Features.Handlers;
 public class GetPartyRoleQueryHandler : IRequestHandler<GetPartyRoleQuery, PartyRoleResponse>
 {
     private readonly IRepository<PartyRole, int> _partyRoleRepository;
+    private readonly IMapper _mapper;
     private readonly ILogger<GetPartyRoleQueryHandler> _logger;
 
     public GetPartyRoleQueryHandler(
         IRepository<PartyRole, int> partyRoleRepository,
+        IMapper mapper,
         ILogger<GetPartyRoleQueryHandler> logger)
     {
         _partyRoleRepository = partyRoleRepository;
-        _logger              = logger;
+        _mapper = mapper;
+        _logger = logger;
     }
 
     public async Task<PartyRoleResponse> Handle(GetPartyRoleQuery request, CancellationToken cancellationToken)
@@ -25,20 +30,8 @@ public class GetPartyRoleQueryHandler : IRequestHandler<GetPartyRoleQuery, Party
         var partyRole = await _partyRoleRepository.GetByIdAsync(request.Id, cancellationToken);
 
         if (partyRole is null)
-            return null!;
+            throw new NotFoundException($"PartyRole bulunamadı: {request.Id}");
 
-        return MapToResponse(partyRole);
+        return _mapper.Map<PartyRoleResponse>(partyRole);
     }
-
-    private static PartyRoleResponse MapToResponse(PartyRole partyRole) => new()
-    {
-        Id              = partyRole.Id,
-        PartyId         = partyRole.PartyId,
-        PartyRoleTypeId = partyRole.PartyRoleTypeId,
-        ValidFor = new TimePeriodResponse
-        {
-            StartDateTime = partyRole.ValidForStart,
-            EndDateTime   = partyRole.ValidForEnd
-        }
-    };
 }

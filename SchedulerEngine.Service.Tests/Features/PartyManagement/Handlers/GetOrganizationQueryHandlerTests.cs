@@ -1,27 +1,47 @@
 using Moq;
+using AutoMapper;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using SchedulerEngine.Core.Repository;
 using SchedulerEngine.Core.Model;
-using SchedulerEngine.Core.TMFCommon;
+using SchedulerEngine.Core.Exceptions;
 using SchedulerEngine.Service.Features.Queries;
 using SchedulerEngine.Service.Features.Handlers;
+using SchedulerEngine.Service.Dtos.Responses;
 
 namespace SchedulerEngine.Service.Tests.Features.Queries;
 
 public class GetOrganizationQueryHandlerTests
 {
-    private readonly Mock<IRepository<Organization, int>> _organizationRepositoryMock;
+    private readonly Mock<IRepository<Organization, int>>      _organizationRepositoryMock;
+    private readonly Mock<IMapper>                             _mapperMock;
     private readonly Mock<ILogger<GetOrganizationQueryHandler>> _loggerMock;
-    private readonly GetOrganizationQueryHandler _handler;
+    private readonly GetOrganizationQueryHandler                _handler;
 
     public GetOrganizationQueryHandlerTests()
     {
         _organizationRepositoryMock = new Mock<IRepository<Organization, int>>();
+        _mapperMock                 = new Mock<IMapper>();
         _loggerMock                 = new Mock<ILogger<GetOrganizationQueryHandler>>();
+
+        _mapperMock
+            .Setup(x => x.Map<OrganizationResponse>(It.IsAny<Organization>()))
+            .Returns((Organization o) => new OrganizationResponse
+            {
+                Id        = o.Id,
+                Name      = o.Name,
+                TaxOffice = o.TaxOffice,
+                TaxNumber = o.TaxNumber,
+                ValidFor = new TimePeriodResponse
+                {
+                    StartDateTime = o.ValidForStart,
+                    EndDateTime   = o.ValidForEnd
+                }
+            });
 
         _handler = new GetOrganizationQueryHandler(
             _organizationRepositoryMock.Object,
+            _mapperMock.Object,
             _loggerMock.Object);
     }
 
@@ -35,9 +55,8 @@ public class GetOrganizationQueryHandlerTests
             Name      = "Test A.Ş.",
             TaxOffice = "Kadıköy",
             TaxNumber = 1234567890,
-            ValidForStart = DateTime.MinValue, 
-            ValidForEnd = DateTime.MaxValue
-
+            ValidForStart = DateTime.MinValue,
+            ValidForEnd   = DateTime.MaxValue
         };
 
         _organizationRepositoryMock
@@ -56,18 +75,17 @@ public class GetOrganizationQueryHandlerTests
     }
 
     [Fact]
-    public async Task Handle_NonExistingOrganization_ShouldReturnNull()
+    public async Task Handle_NonExistingOrganization_ShouldThrowNotFoundException()
     {
-        // Arrange
+        // DEĞİŞTİ: handler artık null dönmüyor, NotFoundException fırlatıyor.
         _organizationRepositoryMock
             .Setup(x => x.GetByIdAsync(99, It.IsAny<CancellationToken>()))
             .ReturnsAsync((Organization?)null);
 
-        // Act
-        var result = await _handler.Handle(new GetOrganizationQuery { Id = 99 }, TestContext.Current.CancellationToken);
+        var act = async () => await _handler.Handle(
+            new GetOrganizationQuery { Id = 99 }, TestContext.Current.CancellationToken);
 
-        // Assert
-        result.Should().BeNull();
+        await act.Should().ThrowAsync<NotFoundException>();
     }
 
     [Fact]
@@ -82,8 +100,8 @@ public class GetOrganizationQueryHandlerTests
             Id        = 1,
             Name      = "Test A.Ş.",
             TaxNumber = 1234567890,
-            ValidForStart = start, 
-            ValidForEnd = end
+            ValidForStart = start,
+            ValidForEnd   = end
         };
 
         _organizationRepositoryMock
